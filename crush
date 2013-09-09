@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+var results = require('./index')(process.argv[2]);
+
+results.on('data', function(info) {
+  console.log(info);
+});
+
+results.on('error', function(err) {
+  console.log('error', err);
+});
