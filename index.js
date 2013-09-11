@@ -13,7 +13,8 @@ var fs                = require('fs'),
     detective         = require('detective'),
     aggregate         = require('stream-aggregate-promise'),
     asStream          = require('as-stream'),
-    transformResolve  = resolveWith.bind(null, nodeResolve)
+    transformResolve  = resolveWith.bind(null, nodeResolve),
+    all               = q.all
 
 /**
  * Resolve module by id
@@ -57,6 +58,7 @@ function runStreamTransform(transform, mod) {
  */
 function runTransform(transform, mod) {
   return q.resolve(transform(mod.filename, mod)).then(function(transformed) {
+    if (!transformed) return mod
     if (transformed.source) mod.source = transformed.source
     if (transformed.deps) mod.deps = _.extend(mod.deps, transformed.deps)
     return mod
@@ -139,7 +141,7 @@ module.exports = function(mains, opts) {
       seen = {},
       entries = [].concat(mains).filter(Boolean).map(makeMainModule)
 
-  q.all(entries.map(function(mod) {return walk(mod, {filename: '/', id: '/'})}))
+  all(entries.map(function(mod) {return walk(mod, {filename: '/', id: '/'})}))
     .fail(output.emit.bind(output, 'error'))
     .fin(output.queue.bind(output, null))
 
@@ -206,21 +208,23 @@ module.exports = function(mains, opts) {
   }
 
   function walkDeps(mod) {
-    return q.all(Object.keys(mod.deps)
+    return all(Object.keys(mod.deps)
       .filter(function(depId) { return mod.deps[depId] })
       .map(function(depId) { return walk({id: depId, deps: {}}, mod) }))
   }
 
   function extractDeps(filename, mod) {
-    if (opts.noParse && opts.noParse.indexOf(filename) > -1) return {}
-    var deps = detective(mod.source)
-    return q.all(deps.map(function(id) {
-      return ((opts.filter && !opts.filter(id)) ?
+    if (opts.noParse && opts.noParse.indexOf(filename) > -1) return
+
+    var deps = detective(mod.source).map(function(id) {
+      var resolved = ((opts.filter && !opts.filter(id)) ?
         q.resolve({id: id, filename: false}) : resolver(id, mod))
-    })).then(function(deps) {
-      deps.forEach(function(dep) { mod.deps[dep.id] = dep.filename })
-      return mod
+      return resolved.then(function(dep) {
+        mod.deps[dep.id] = dep.filename
+      })
     })
+
+    return all(deps).then(function() { return mod })
   }
 
   function applyTransforms(mod) {
@@ -241,7 +245,7 @@ module.exports = function(mains, opts) {
     if (mod.package && opts.transformKey)
       txs = txs.concat(getTransform(mod.package, opts.transformKey))
 
-    return q.all(txs.filter(Boolean).map(loadTransform.bind(null, mod)))
+    return all(txs.filter(Boolean).map(loadTransform.bind(null, mod)))
       .then(function(txs) {
         txs.forEach(function(t) {
           p = p.then(function(p) {
