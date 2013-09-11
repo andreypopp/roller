@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 var crush       = require('./index')
 var JSONStream  = require('JSONStream')
-var results     = crush(process.argv[2])
+var program     = require('commander')
 
+program
+  .version('0.1.0')
+  .option('-t --transform <transform>', 'transform to apply')
+  .parse(process.argv)
+
+var results = crush(program.args[0], {
+  transform: program.transform
+})
 
 results.on('error', function(err) {
   console.log('error', err)
