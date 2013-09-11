@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-var results = require('./index')(process.argv[2]);
+var crush       = require('./index')
+var JSONStream  = require('JSONStream')
+var results     = crush(process.argv[2])
 
-results.on('data', function(info) {
-  console.log(info);
-});
 
 results.on('error', function(err) {
-  console.log('error', err);
-});
+  console.log('error', err)
+  process.exit(1)
+})
+
+results
+  .pipe(JSONStream.stringify())
+  .pipe(process.stdout)
