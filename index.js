@@ -145,8 +145,12 @@ module.exports = function(mains, opts) {
       entries = [].concat(mains).filter(Boolean).map(makeMainModule)
 
   all(entries.map(function(mod) {return walk(mod, {filename: '/', id: '/'})}))
-    .fail(output.emit.bind(output, 'error'))
+    .fail(function(err) {
+      output.emit('error', err)
+    })
     .fin(output.queue.bind(output, null))
+
+  output.asPromise = function() { return aggregate(this) }
 
   return output
 

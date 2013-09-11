@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-var crush       = require('./index')
-var JSONStream  = require('JSONStream')
-var program     = require('commander')
+var crush       = require('./index'),
+    program     = require('commander')
 
 program
   .version('0.1.0')
@@ -12,11 +11,12 @@ var results = crush(program.args[0], {
   transform: program.transform
 })
 
-results.on('error', function(err) {
-  console.log(err.message || err)
-  process.exit(1)
-})
-
-results
-  .pipe(JSONStream.stringify())
-  .pipe(process.stdout)
+results.asPromise()
+  .then(function(result) {
+    console.log(JSON.stringify(result))
+  })
+  .fail(function(err) {
+    console.log(err.message || err)
+    process.exit(1)
+  })
+  .end()
