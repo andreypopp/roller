@@ -5,16 +5,19 @@ REPONAME = $(shell echo $(REPO) | sed -E 's_.+:([a-zA-Z0-9_\-]+)/([a-zA-Z0-9_\-]
 install link:
 	@npm $@
 
+lint:
+	@$(BIN)/jshint index.js
+
 test:
 	@$(BIN)/tap module-deps-test/*.js
 
-release-patch: test
+release-patch: test lint
 	@$(call release,patch)
 
-release-minor: test
+release-minor: test lint
 	@$(call release,minor)
 
-release-major: test
+release-major: test lint
 	@$(call release,major)
 
 publish:

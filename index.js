@@ -1,3 +1,7 @@
+/* jshint asi: true, expr: true, globalstrict: true */
+/* global require, Buffer, process, module */
+"use strict";
+
 var fs              = require('fs'),
     path            = require('path'),
     rng             = require('crypto').rng,
@@ -56,9 +60,9 @@ module.exports = function(mains, opts) {
   }
 
   function walk(cur, parent) {
-    return ((!cur.filename && cur.id)
-      ? resolver(cur.id, parent).then(_.extend.bind(null, cur))
-      : q.resolve(cur))
+    return ((!cur.filename && cur.id) ?
+      resolver(cur.id, parent).then(_.extend.bind(null, cur)) :
+      q.resolve(cur))
     .then(function(cur) {
       if (seen[cur.filename]) return
       seen[cur.filename] = true
