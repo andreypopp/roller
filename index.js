@@ -83,11 +83,15 @@ module.exports = function(mains, opts) {
         var result = {id: cur.filename, source: cur.source, deps: cur.deps}
         if (cur.entry) result.entry = true
         output.queue(result)
-        return q.all(Object.keys(cur.deps)
-          .filter(function(depId) { return cur.deps[depId] })
-          .map(function(depId) { return walk({id: depId, deps: {}}, cur) }))
+        return walkDeps(cur)
       })
     })
+  }
+
+  function walkDeps(cur) {
+    return q.all(Object.keys(cur.deps)
+      .filter(function(depId) { return cur.deps[depId] })
+      .map(function(depId) { return walk({id: depId, deps: {}}, cur) }))
   }
 
   function getTransform(pkg) {
