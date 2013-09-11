@@ -73,9 +73,8 @@ function runTransform(transform, mod) {
  * @return {Array<String>} a list of transform ids
  */
 function getTransform(pkg, key) {
-  var n = pkg
-  key.forEach(function (k) { if (n && typeof n === 'object') n = n[k] })
-  return [].concat(n).filter(Boolean)
+  key.forEach(function (k) { if (pkg && typeof pkg === 'object') pkg = pkg[k] })
+  return [].concat(pkg).filter(Boolean)
 }
 
 /**
@@ -217,11 +216,13 @@ module.exports = function(mains, opts) {
     if (opts.noParse && opts.noParse.indexOf(filename) > -1) return
 
     var deps = detective(mod.source).map(function(id) {
-      var resolved = ((opts.filter && !opts.filter(id)) ?
-        q.resolve({id: id, filename: false}) : resolver(id, mod))
-      return resolved.then(function(dep) {
-        mod.deps[dep.id] = dep.filename
-      })
+      var resolved
+      if (opts.filter && !opts.filter(id))
+        resolved = q.resolve({id: id, filename: false})
+      else
+        resolved = resolver(id, mod)
+
+      return resolved.then(function(dep) { mod.deps[dep.id] = dep.filename })
     })
 
     return all(deps).then(function() { return mod })
@@ -245,14 +246,15 @@ module.exports = function(mains, opts) {
     if (mod.package && opts.transformKey)
       txs = txs.concat(getTransform(mod.package, opts.transformKey))
 
-    return all(txs.filter(Boolean).map(loadTransform.bind(null, mod)))
-      .then(function(txs) {
-        txs.forEach(function(t) {
-          p = p.then(function(p) {
-            return (t.length === 1 ? runStreamTransform : runTransform)(t, p)
-          })
+    txs = txs.filter(Boolean).map(loadTransform.bind(null, mod))
+
+    return all(txs).then(function(txs) {
+      txs.forEach(function(t) {
+        p = p.then(function(p) {
+          return (t.length === 1 ? runStreamTransform : runTransform)(t, p)
         })
-        return p
       })
+      return p
+    })
   }
 }
