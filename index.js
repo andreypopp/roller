@@ -13,6 +13,16 @@ var fs              = require('fs'),
     detective       = require('detective'),
     aggregate       = require('stream-aggregate-promise');
 
+function asStream(str) {
+  if (typeof str.pipe === 'function') return str
+  var stream = through()
+  stream.pause()
+  process.nextTick(function () { stream.resume() })
+  stream.queue(str)
+  stream.queue(null)
+  return stream
+}
+
 function resolveWith(resolve, id, opts) {
   var p = q.defer()
   resolve(id, opts, function(err, filename, pkg) {
@@ -42,7 +52,7 @@ module.exports = function(mains, opts) {
     var mod = {entry: true, deps: {}}
     if (typeof m.pipe === 'function') {
       mod.filename = path.join(basedir, rng(8).toString('hex') + '.js')
-      mod.stream = m
+      mod.sourcePromise = aggregate(m)
     } else {
       var filename = path.resolve(m)
       mod.id = filename
@@ -88,22 +98,27 @@ module.exports = function(mains, opts) {
     .then(function(cur) {
       if (seen[cur.filename]) return
       seen[cur.filename] = true
-      if (!cur.stream) cur.stream = fs.createReadStream(cur.filename)
-      return applyTransforms(cur)
-      .then(function(source) {
-        cur.source = Buffer.isBuffer(source) ? source.toString() : source
-        var deps = (opts.noParse && opts.noParse.indexOf(cur.filename) > -1) ?
-          [] : detective(source)
-        return q.all(deps.map(function(id) {
-          return ((opts.filter && !opts.filter(id)) ?
-            q.resolve({id: id, filename: false}) : resolver(id, cur))
-        }))
-      })
-      .then(function(deps) {
-        deps.forEach(function(dep) { cur.deps[dep.id] = dep.filename })
+
+      if (!cur.sourcePromise)
+        cur.sourcePromise = aggregate(fs.createReadStream(cur.filename))
+
+      return applyTransforms(cur).then(function(cur) {
+        if (Buffer.isBuffer(cur.source)) cur.source = cur.source.toString()
         output.queue(moduleToResult(cur))
         return walkDeps(cur)
       })
+    })
+  }
+
+  function extractDeps(filename, mod) {
+    if (opts.noParse && opts.noParse.indexOf(filename) > -1) return {}
+    var deps = detective(mod.source)
+    return q.all(deps.map(function(id) {
+      return ((opts.filter && !opts.filter(id)) ?
+        q.resolve({id: id, filename: false}) : resolver(id, mod))
+    })).then(function(deps) {
+      deps.forEach(function(dep) { mod.deps[dep.id] = dep.filename })
+      return mod
     })
   }
 
@@ -140,20 +155,43 @@ module.exports = function(mains, opts) {
       })
   }
 
+  function doTransform(transform, mod) {
+    if (transform.length === 1) {
+      return aggregate(asStream(mod.source).pipe(transform(mod.filename)))
+        .then(function(source) {
+          mod.source = source
+          return mod
+        })
+    } else {
+      return q.resolve(transform(mod.filename, mod))
+        .then(function(transformed) {
+          if (transformed.source) mod.source = transformed.source
+          if (transformed.deps) mod.deps = _.extend(mod.deps, transformed.deps)
+          return mod
+        })
+    }
+  }
+
   function applyTransforms(cur) {
     var isTopLevel = entries.some(function (entry) {
           return path.relative(path.dirname(entry.filename), cur.filename)
             .split('/').indexOf('node_modules') < 0
         }),
         transforms = [],
-        stream = cur.stream
+        point = cur.sourcePromise.then(function(source) {
+          cur.source = source
+          return cur
+        })
 
     if (isTopLevel) transforms = transforms.concat(opts.transform)
     if (cur.package) transforms = transforms.concat(getTransform(cur.package))
+    transforms.push(extractDeps)
     return q.all(transforms.filter(Boolean).map(loadTransform.bind(null, cur)))
       .then(function(transforms) {
-        transforms.forEach(function(t) {stream = stream.pipe(t(cur.filename))})
-        return aggregate(stream)
+        transforms.forEach(function(t) {
+          point = point.then(doTransform.bind(null, t))
+        })
+        return point
       })
   }
 }
