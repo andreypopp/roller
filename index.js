@@ -28,7 +28,7 @@ module.exports = function(mains, opts) {
       basedir = opts.basedir || process.cwd(),
       resolve = resolveWith.bind(null, opts.resolve || browserResolve),
       transformResolve = resolveWith.bind(null, nodeResolve),
-      cache = opts.cache || {},
+      cache = {},
       seen = {},
       entries = [].concat(mains).filter(Boolean).map(makeModule)
 
@@ -56,7 +56,8 @@ module.exports = function(mains, opts) {
     parent.extensions = opts.extensions
     parent.modules = opts.modules
     parent.paths = []
-    return cache[id] ? cache[id] : (cache[id] = resolve(id, parent))
+    var bucket = (cache[parent.filename] = cache[parent.filename] || {})
+    return bucket[id] ? bucket[id] : bucket[id] = resolve(id, parent)
   }
 
   function walk(cur, parent) {
