@@ -11,17 +11,8 @@ var fs              = require('fs'),
     nodeResolve     = require('resolve'),
     browserResolve  = require('browser-resolve'),
     detective       = require('detective'),
-    aggregate       = require('stream-aggregate-promise');
-
-function asStream(str) {
-  if (typeof str.pipe === 'function') return str
-  var stream = through()
-  stream.pause()
-  process.nextTick(function () { stream.resume() })
-  stream.queue(str)
-  stream.queue(null)
-  return stream
-}
+    aggregate       = require('stream-aggregate-promise'),
+    asStream        = require('as-stream')
 
 function resolveWith(resolve, id, opts) {
   var p = q.defer()
