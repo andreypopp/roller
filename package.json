@@ -20,7 +20,6 @@
     "kew": "~0.1.7",
     "detective": "~2.1.2",
     "through": "~2.3.4",
-    "concat-stream": "~1.0.1",
     "underscore": "~1.5.2",
     "stream-aggregate-promise": "~0.1.0",
     "resolve": "~0.5.0"
