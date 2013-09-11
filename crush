@@ -13,7 +13,7 @@ var results = crush(program.args[0], {
 })
 
 results.on('error', function(err) {
-  console.log('error', err)
+  console.log(err.message || err)
   process.exit(1)
 })
 

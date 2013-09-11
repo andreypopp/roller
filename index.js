@@ -102,6 +102,10 @@ function loadTransform(mod, transform) {
         ].join(''))
       return require(res.filename)
     })
+    .fail(function(err) {
+      err.message += ' which is required as a transform'
+      throw err
+    })
 }
 
 /**
@@ -174,6 +178,10 @@ module.exports = function(mains, opts) {
     parent.paths = []
     var bucket = (cache[parent.filename] = cache[parent.filename] || {})
     return bucket[id] ? bucket[id] : bucket[id] = resolve(id, parent)
+      .fail(function(err) {
+        err.message += [', module required from', parent.filename].join(' ')
+        throw err
+      })
   }
 
   function checkCache(mod, parent) {
