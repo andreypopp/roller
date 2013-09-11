@@ -51,6 +51,12 @@ module.exports = function(mains, opts) {
     return mod
   }
 
+  function moduleToResult(mod) {
+    var result = {id: mod.filename, source: mod.source, deps: mod.deps}
+    if (mod.entry) result.entry = true
+    return result
+  }
+
   function resolver(id, parent) {
     parent.packageFilter = opts.packageFilter
     parent.extensions = opts.extensions
@@ -60,7 +66,22 @@ module.exports = function(mains, opts) {
     return bucket[id] ? bucket[id] : bucket[id] = resolve(id, parent)
   }
 
+  function checkCache(cur, parent) {
+    if (!(opts.cache && opts.cache[parent.filename])) return
+    var curFilename = opts.cache[parent.filename].deps[cur.id]
+    var result = opts.cache[curFilename]
+    if (!result) return
+    return {id: cur.id, filename: curFilename,
+      deps: result.deps, source: result.source, entry: result.entry,
+      package: opts.packageCache && opts.packageCache[result.id]}
+  }
+
   function walk(cur, parent) {
+    var cached
+    if (cached = checkCache(cur, parent)) {
+      output.emit(moduleToResult(cached))
+      return walkDeps(cached, parent)
+    }
     return ((!cur.filename && cur.id) ?
       resolver(cur.id, parent).then(_.extend.bind(null, cur)) :
       q.resolve(cur))
@@ -80,9 +101,7 @@ module.exports = function(mains, opts) {
       })
       .then(function(deps) {
         deps.forEach(function(dep) { cur.deps[dep.id] = dep.filename })
-        var result = {id: cur.filename, source: cur.source, deps: cur.deps}
-        if (cur.entry) result.entry = true
-        output.queue(result)
+        output.queue(moduleToResult(cur))
         return walkDeps(cur)
       })
     })
