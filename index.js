@@ -77,8 +77,8 @@ module.exports = function(mains, opts) {
   }
 
   function walk(cur, parent) {
-    var cached
-    if (cached = checkCache(cur, parent)) {
+    var cached = checkCache(cur, parent)
+    if (cached) {
       output.emit(moduleToResult(cached))
       return walkDeps(cached, parent)
     }
