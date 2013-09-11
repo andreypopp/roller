@@ -14,9 +14,9 @@ var fs              = require('fs'),
     aggregate       = require('stream-aggregate-promise'),
     asStream        = require('as-stream')
 
-function resolveWith(resolve, id, opts) {
+function resolveWith(resolve, id, parent) {
   var p = q.defer()
-  resolve(id, opts, function(err, filename, pkg) {
+  resolve(id, parent, function(err, filename, pkg) {
     err ? p.reject(err) : p.resolve({id: id, filename: filename, package: pkg})
   })
   return p
@@ -40,12 +40,15 @@ module.exports = function(mains, opts) {
   return output
 
   function makeModule(m) {
-    var mod = {entry: true, deps: {}}
+    var filename,
+        mod = {entry: true, deps: {}}
     if (typeof m.pipe === 'function') {
-      mod.filename = path.join(basedir, rng(8).toString('hex') + '.js')
+      filename = path.join(basedir, rng(8).toString('hex') + '.js')
+      mod.id = filename
+      mod.filename = filename
       mod.sourcePromise = aggregate(m)
     } else {
-      var filename = path.resolve(m)
+      filename = path.resolve(m)
       mod.id = filename
       mod.filename = filename
     }
@@ -67,36 +70,36 @@ module.exports = function(mains, opts) {
     return bucket[id] ? bucket[id] : bucket[id] = resolve(id, parent)
   }
 
-  function checkCache(cur, parent) {
+  function checkCache(mod, parent) {
     if (!(opts.cache && opts.cache[parent.filename])) return
-    var curFilename = opts.cache[parent.filename].deps[cur.id]
+    var curFilename = opts.cache[parent.filename].deps[mod.id]
     var result = opts.cache[curFilename]
     if (!result) return
-    return {id: cur.id, filename: curFilename,
+    return {id: mod.id, filename: curFilename,
       deps: result.deps, source: result.source, entry: result.entry,
       package: opts.packageCache && opts.packageCache[result.id]}
   }
 
-  function walk(cur, parent) {
-    var cached = checkCache(cur, parent)
+  function walk(mod, parent) {
+    var cached = checkCache(mod, parent)
     if (cached) {
       output.emit(moduleToResult(cached))
       return walkDeps(cached, parent)
     }
-    return ((!cur.filename && cur.id) ?
-      resolver(cur.id, parent).then(_.extend.bind(null, cur)) :
-      q.resolve(cur))
-    .then(function(cur) {
-      if (seen[cur.filename]) return
-      seen[cur.filename] = true
+    return ((!mod.filename && mod.id) ?
+      resolver(mod.id, parent).then(_.extend.bind(null, mod)) :
+      q.resolve(mod))
+    .then(function(mod) {
+      if (seen[mod.filename]) return
+      seen[mod.filename] = true
 
-      if (!cur.sourcePromise)
-        cur.sourcePromise = aggregate(fs.createReadStream(cur.filename))
+      if (!mod.sourcePromise)
+        mod.sourcePromise = aggregate(fs.createReadStream(mod.filename))
 
-      return applyTransforms(cur).then(function(cur) {
-        if (Buffer.isBuffer(cur.source)) cur.source = cur.source.toString()
-        output.queue(moduleToResult(cur))
-        return walkDeps(cur)
+      return applyTransforms(mod).then(function(mod) {
+        if (Buffer.isBuffer(mod.source)) mod.source = mod.source.toString()
+        output.queue(moduleToResult(mod))
+        return walkDeps(mod)
       })
     })
   }
@@ -113,10 +116,10 @@ module.exports = function(mains, opts) {
     })
   }
 
-  function walkDeps(cur) {
-    return q.all(Object.keys(cur.deps)
-      .filter(function(depId) { return cur.deps[depId] })
-      .map(function(depId) { return walk({id: depId, deps: {}}, cur) }))
+  function walkDeps(mod) {
+    return q.all(Object.keys(mod.deps)
+      .filter(function(depId) { return mod.deps[depId] })
+      .map(function(depId) { return walk({id: depId, deps: {}}, mod) }))
   }
 
   function getTransform(pkg) {
@@ -129,10 +132,10 @@ module.exports = function(mains, opts) {
     }
   }
 
-  function loadTransform(cur, transform) {
+  function loadTransform(mod, transform) {
     if (!_.isString(transform)) return q.resolve(transform)
 
-    return transformResolve(transform, {basedir: path.dirname(cur.filename)})
+    return transformResolve(transform, {basedir: path.dirname(mod.filename)})
       .fail(function() {
         return transformResolve(transform, {basedir: process.cwd()})
       })
@@ -140,7 +143,7 @@ module.exports = function(mains, opts) {
         if (!res)
           throw new Error([
             'cannot find transform module ', transform,
-            ' while transforming ', cur.filename
+            ' while transforming ', mod.filename
           ].join(''))
         return require(res.filename)
       })
@@ -163,26 +166,24 @@ module.exports = function(mains, opts) {
     }
   }
 
-  function applyTransforms(cur) {
+  function applyTransforms(mod) {
     var isTopLevel = entries.some(function (entry) {
-          return path.relative(path.dirname(entry.filename), cur.filename)
+          return path.relative(path.dirname(entry.filename), mod.filename)
             .split('/').indexOf('node_modules') < 0
         }),
-        transforms = [],
-        point = cur.sourcePromise.then(function(source) {
-          cur.source = source
-          return cur
+        txs = [extractDeps],
+        p = mod.sourcePromise.then(function(source) {
+          mod.source = source
+          return mod
         })
 
-    if (isTopLevel) transforms = transforms.concat(opts.transform)
-    if (cur.package) transforms = transforms.concat(getTransform(cur.package))
-    transforms.push(extractDeps)
-    return q.all(transforms.filter(Boolean).map(loadTransform.bind(null, cur)))
-      .then(function(transforms) {
-        transforms.forEach(function(t) {
-          point = point.then(doTransform.bind(null, t))
-        })
-        return point
+    if (isTopLevel) txs = txs.concat(opts.transform)
+    if (mod.package) txs = txs.concat(getTransform(mod.package))
+
+    return q.all(txs.filter(Boolean).map(loadTransform.bind(null, mod)))
+      .then(function(txs) {
+        txs.forEach(function(t) { p = p.then(doTransform.bind(null, t)) })
+        return p
       })
   }
 }
