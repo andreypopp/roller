@@ -104,6 +104,22 @@ function loadTransform(mod, transform) {
 }
 
 /**
+ * Convert module object into a format suitable for browser-pack
+ *
+ * @param {Object} mod an object representing some module
+ * @return {Object} an object suitable for browser-pack consumption
+ */
+function moduleToResult(mod) {
+  if (!mod.filename) return mod
+  var result = {id: mod.filename, source: mod.source, deps: mod.deps}
+  if (Buffer.isBuffer(result.source))
+    result.source = result.source.toString()
+  if (mod.entry)
+    result.entry = true
+  return result
+}
+
+/**
  * Resolve a graph of dependencies for a specified set of modules
  *
  * This is compatible with module-deps implementation with a few addition
@@ -129,6 +145,11 @@ module.exports = function(mains, opts) {
 
   return output
 
+  function emit(mod) {
+    output.queue(moduleToResult(mod))
+    return mod
+  }
+
   function makeMainModule(m) {
     var filename,
         mod = {entry: true, deps: {}}
@@ -143,12 +164,6 @@ module.exports = function(mains, opts) {
       mod.filename = filename
     }
     return mod
-  }
-
-  function moduleToResult(mod) {
-    var result = {id: mod.filename, source: mod.source, deps: mod.deps}
-    if (mod.entry) result.entry = true
-    return result
   }
 
   function resolver(id, parent) {
@@ -172,25 +187,21 @@ module.exports = function(mains, opts) {
 
   function walk(mod, parent) {
     var cached = checkCache(mod, parent)
+
     if (cached) {
-      output.emit(moduleToResult(cached))
+      if (seen[cached.filename]) return
+      emit(cached)
       return walkDeps(cached, parent)
     }
-    return ((!mod.filename && mod.id) ?
+
+    var resolved = ((!mod.filename && mod.id) ?
       resolver(mod.id, parent).then(_.extend.bind(null, mod)) :
       q.resolve(mod))
-    .then(function(mod) {
+
+    return resolved.then(function(mod) {
       if (seen[mod.filename]) return
       seen[mod.filename] = true
-
-      if (!mod.sourcePromise)
-        mod.sourcePromise = aggregate(fs.createReadStream(mod.filename))
-
-      return applyTransforms(mod).then(function(mod) {
-        if (Buffer.isBuffer(mod.source)) mod.source = mod.source.toString()
-        output.queue(moduleToResult(mod))
-        return walkDeps(mod)
-      })
+      return applyTransforms(mod).then(emit).then(walkDeps)
     })
   }
 
@@ -218,10 +229,11 @@ module.exports = function(mains, opts) {
             .split('/').indexOf('node_modules') < 0
         }),
         txs = [extractDeps],
-        p = mod.sourcePromise.then(function(source) {
-          mod.source = source
-          return mod
-        })
+        p = (mod.sourcePromise || aggregate(fs.createReadStream(mod.filename)))
+            .then(function(source) {
+              mod.source = source
+              return mod
+            })
 
     if (isTopLevel)
       txs = txs.concat(opts.transform)
