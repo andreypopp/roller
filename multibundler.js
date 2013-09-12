@@ -24,7 +24,7 @@ module.exports = function(spec, opts) {
     output[name] = {js: packJS()}
   }
 
-  opts.modules = opts.module || {}
+  opts.modules = opts.modules || {}
   extend(opts.modules, browserBuiltins)
 
   makeGraph(entries, opts).asPromise()
@@ -157,14 +157,12 @@ function mangleID() {
 
 function pipeline() {
   if (arguments.length === 1) return arguments[0]
-  var input = arguments[0],
-      output = arguments[arguments.length - 1],
-      current = arguments[0]
+  var current = arguments[0]
 
   for (var i = 1; i < arguments.length; i++)
     current = current.pipe(arguments[i])
 
-  return duplex(input, output)
+  return duplex(arguments[0], arguments[arguments.length - 1])
 }
 
 function packJS(opts) {
