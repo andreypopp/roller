@@ -146,7 +146,7 @@ function moduleToResult(mod) {
 module.exports = function(mains, opts) {
   opts = opts || {}
 
-  opts.extensions.unshift('.js')
+  if (opts.extensions) opts.extensions.unshift('.js')
 
   var moduleProto = {
     resolve: function(id, parent) {
