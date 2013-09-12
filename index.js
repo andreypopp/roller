@@ -183,8 +183,7 @@ module.exports = function(mains, opts) {
       id: id,
       deps: {},
       resolve: function(id, parent) {
-        parent = parent || mod
-        return resolver(id, parent)
+        return resolver(id, parent || mod)
       }
     }
     return mod
@@ -203,6 +202,8 @@ module.exports = function(mains, opts) {
       })
   }
 
+  // Allows to store module and package definitions in a opts.cache and
+  // opts.packageCache respectively, this is how module-deps does it
   function checkCache(mod, parent) {
     if (!(opts.cache && opts.cache[parent.filename])) return
     var curFilename = opts.cache[parent.filename].deps[mod.id]
@@ -262,7 +263,10 @@ module.exports = function(mains, opts) {
     return all(txs).then(function(txs) {
       txs.forEach(function(t) {
         p = p.then(function(p) {
-          return (t.length === 1 ? runStreamTransform : runTransform)(t, p, opts)
+          if (t.length === 1)
+            return runStreamTransform(t, p)
+          else
+            return runTransform(t, p, opts)
         })
       })
       return p
