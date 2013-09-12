@@ -23,21 +23,21 @@ module.exports = function(spec, opts) {
     // bundles
     for (var name in spec)
       traverseGraphFrom(graph, spec[name], function(mod) {
-        seen[mod.id] = seen[mod.id] ? seen[mod.id] + 1 : 1
+        seen[mod.id] || (seen[mod.id] = [])
+        if (!mod.entry) seen[mod.id].push(name)
       })
 
     // pack common modules
     for (var id in seen)
-      if (seen[id] > 1 && !graph[id].entry) {
+      if (seen[id].length > 1)
         output.__common__.js.write(graph[id])
-      }
     output.__common__.js.end()
     output.__common__.css.end()
 
     // pack app bundles
     for (var name in spec) {
       traverseGraphFrom(graph, spec[name], function(mod) {
-        if (seen[mod.id] > 1) return // it's in common bundle
+        if (seen[mod.id].length > 1) return // it's in common bundle
         if (/.*\.(css|less|sass|scss|styl)/i.exec(mod.id))
           output[name].css.write(mod)
         else
