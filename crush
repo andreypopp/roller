@@ -17,8 +17,4 @@ results.asPromise()
   .then(function(result) {
     console.log(JSON.stringify(result))
   })
-  .fail(function(err) {
-    console.log(err.message || err)
-    process.exit(1)
-  })
   .end()

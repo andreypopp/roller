@@ -217,7 +217,8 @@ module.exports = function(mains, opts) {
   }
 
   function walk(mod, parent) {
-    var cached = checkCache(mod, parent)
+    var cached = checkCache(mod, parent),
+        resolved
 
     if (cached) {
       if (seen[cached.filename]) return
@@ -225,9 +226,14 @@ module.exports = function(mains, opts) {
       return walkDeps(cached, parent)
     }
 
-    var resolved = ((!mod.filename && mod.id) ?
-      resolver(mod.id, parent).then(_.extend.bind(null, mod)) :
-      q.resolve(mod))
+    if (!mod.filename && mod.id)
+      resolved = resolver(mod.id, parent).then(function(r) {
+        mod.filename = r.filename
+        mod.package = r.package
+        return mod
+      })
+    else
+      resolved = q.resolve(mod)
 
     return resolved.then(function(mod) {
       if (seen[mod.filename]) return
