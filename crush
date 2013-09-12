@@ -1,14 +1,12 @@
 #!/usr/bin/env node
-var crush       = require('./index'),
-    program     = require('commander')
+var crush = require('./index')
+    
+    
+var args  = require('optimist')
+  .argv
 
-program
-  .version('0.1.0')
-  .option('-t --transform <transform>', 'transform to apply')
-  .parse(process.argv)
-
-var results = crush(program.args[0], {
-  transform: program.transform
+var results = crush(args._, {
+  transform: [].concat(args.transform).concat(args.t).filter(Boolean)
 })
 
 results.asPromise()
