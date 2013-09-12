@@ -1,8 +1,13 @@
 "use strict";
 
 var path            = require('path'),
+    crypto          = require('crypto'),
     through         = require('through'),
     _               = require('underscore'),
+    clone           = _.clone,
+    extend          = _.extend,
+    values          = _.values,
+    unique          = _.unique,
     depsSort        = require('deps-sort'),
     browserPack     = require('browser-pack'),
     duplex          = require('duplexer'),
@@ -11,56 +16,104 @@ var path            = require('path'),
     makeGraph       = require('./graph')
 
 module.exports = function(spec, opts) {
-  var entries = _.values(spec),
-      output = {
-        __common__: {
-          js: wrap(packJS(), insertGlobals(entries)),
-          css: packCSS()
-        }
-      }
+  var entries = values(spec).map(function(p) { return path.resolve(p) }),
+      output = {common: {js: pipeline(insertGlobals(entries), packJS())}}
 
   for (var name in spec) {
     spec[name] = path.resolve(spec[name])
-    output[name] = {js: packJS(), css: packCSS()}
+    output[name] = {js: packJS()}
   }
 
   opts.modules = opts.module || {}
-  _.extend(opts.modules, browserBuiltins)
+  extend(opts.modules, browserBuiltins)
 
-  makeGraph(entries, opts).asPromise().then(function(graph) {
-    graph = asIndex(graph)
-    var seen = {}
+  makeGraph(entries, opts).asPromise()
+    .then(function(graph) {
+      graph = asIndex(graph)
 
-    // see if we have modules which we refernce several times from different
-    // bundles
-    for (var name in spec)
-      traverseGraphFrom(graph, spec[name], function(mod) {
-        seen[mod.id] || (seen[mod.id] = [])
-        if (!mod.entry) seen[mod.id].push(name)
-      })
+      var common = commonSubgraph(graph, entries)
 
-    // pack common modules
-    for (var id in seen)
-      if (seen[id].length > 1)
-        output.__common__.js.write(graph[id])
-    output.__common__.js.end()
-    output.__common__.css.end()
+      packBundle(common, {exposeAll: true})
+        .pipe(output.common.js)
 
-    // pack app bundles
-    for (var name in spec) {
-      traverseGraphFrom(graph, spec[name], function(mod) {
-        if (seen[mod.id].length > 1) return // it's in common bundle
-        if (/.*\.(css|less|sass|scss|styl)/i.exec(mod.id))
-          output[name].css.write(mod)
-        else
-          output[name].js.write(mod)
-      })
-      output[name].js.end()
-      output[name].css.end()
-    }
+      for (var name in spec)
+        packBundle(except(subgraphFor(graph, spec[name]), common))
+          .pipe(output[name].js)
 
-  }).end()
+    })
+    .end()
 
+  return output
+}
+
+function commonSubgraph(graph, entries) {
+  var result = {}
+
+  // XXX: this can be done more efficiently if we just break traversing graph on
+  // modules which are already referenced twice, then we need to mark its deps
+  // as common modules automatically
+  entries.forEach(function(entry) {
+    traverse(graph, entry, function(mod, ref, parent) {
+      if (!result[mod.id]) {
+        result[mod.id] = extend({entries: [], from: {}}, mod)
+      }
+      if (!mod.entry) {
+        result[mod.id].entries.push(entry)
+        result[mod.id].from[parent.id] = ref
+      }
+    })
+  })
+
+  Object.keys(result).forEach(function(id) {
+    var mod = result[id]
+    mod.entries = unique(mod.entries)
+    if (result[id].entries.length < 2) delete result[id]
+  })
+
+  return result
+}
+
+function subgraphFor(graph, entry) {
+  var result = {}
+  traverse(graph, entry, function(mod, ref, parent) {
+    result[mod.id] = mod
+  })
+  return result
+}
+
+function except(a, b) {
+  var result = {}
+  for (var key in a)
+    if (!b[key]) result[key] = a[key]
+  return result
+}
+
+function packBundle(graph, opts) {
+  var output = through(),
+      mod
+
+  output.pause()
+  process.nextTick(output.resume.bind(output))
+
+  opts = opts || {}
+
+  for (var id in graph) {
+    mod = graph[id]
+    output.queue({
+      id: id,
+      deps: mod.deps,
+      source: mod.source,
+      entry: mod.entry
+    })
+  }
+  if (opts.exposeAll)
+    output.queue({
+      id: random(8),
+      deps: {},
+      entry: true,
+      source: 'window.require = require'
+    })
+  output.queue(null)
   return output
 }
 
@@ -70,11 +123,12 @@ function asIndex(graph) {
   return index
 }
 
-function traverseGraphFrom(graph, fromId, func) {
+function traverse(graph, fromId, func) {
   var toTraverse = [[graph[fromId]]],
       args,
       mod
 
+  // XXX: no bulletproofness against cycles
   while (toTraverse.length > 0) {
     args = toTraverse.shift()
     mod = args[0]
@@ -90,15 +144,37 @@ function traverseGraphFrom(graph, fromId, func) {
   }
 }
 
-function wrap(stream, wrapper) {
-  wrapper.pipe(stream)
-  return duplex(wrapper, stream)
+function mangleID() {
+  return through(function(mod) {
+    mod = clone(mod)
+    mod.id = hash(mod.id)
+    if (mod.deps)
+      for (var id in mod.deps)
+        mod.deps[id] = hash(mod.deps[id])
+    this.queue(mod)
+  })
 }
 
-function packCSS() {
-  return wrap(through(function(mod) { this.queue(mod.source) }), depsSort())
+function pipeline() {
+  if (arguments.length === 1) return arguments[0]
+  var input = arguments[0],
+      output = arguments[arguments.length - 1],
+      current = arguments[0]
+
+  for (var i = 1; i < arguments.length; i++)
+    current = current.pipe(arguments[i])
+
+  return duplex(input, output)
 }
 
 function packJS(opts) {
-  return wrap(browserPack({raw: true}), depsSort())
+  return pipeline(mangleID(), depsSort(), browserPack({raw: true}))
+}
+
+function hash(what) {
+  return crypto.createHash('md5').update(what).digest('base64').slice(0, 6)
+}
+
+function random(n) {
+  return crypto.rng(n).toString('hex')
 }
