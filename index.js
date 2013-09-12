@@ -241,7 +241,7 @@ module.exports = function(mains, opts) {
               mod.source = source
               return mod
             })
-      
+
     if (isTopLevel)
       txs = txs.concat(opts.transform)
 
