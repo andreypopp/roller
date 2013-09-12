@@ -25,7 +25,8 @@
     "resolve": "~0.5.0",
     "jshint": "~2.1.10",
     "as-stream": "~0.1.0",
-    "optimist": "~0.6.0"
+    "optimist": "~0.6.0",
+    "css-parse": "~1.5.3"
   },
   "devDependencies": {
     "tap": "~0.4.4",
