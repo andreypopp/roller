@@ -3,7 +3,6 @@
 "use strict";
 
 var parse   = require('css-parse'),
-    all     = require('kew').all,
     unique  = require('underscore').unique
 
 function isImportRule(r) {
