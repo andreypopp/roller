@@ -2,19 +2,19 @@
 /* global require, Buffer, process, module */
 "use strict";
 
-var fs                = require('fs'),
-    path              = require('path'),
-    rng               = require('crypto').rng,
-    _                 = require('underscore'),
-    q                 = require('kew'),
-    through           = require('through'),
-    nodeResolve       = require('resolve'),
-    browserResolve    = require('browser-resolve'),
-    detective         = require('detective'),
-    aggregate         = require('stream-aggregate-promise'),
-    asStream          = require('as-stream'),
-    transformResolve  = resolveWith.bind(null, nodeResolve),
-    all               = q.all
+var fs                          = require('fs'),
+    path                        = require('path'),
+    rng                         = require('crypto').rng,
+    _                           = require('underscore'),
+    q                           = require('kew'),
+    through                     = require('through'),
+    nodeResolve                 = require('resolve'),
+    browserResolve              = require('browser-resolve'),
+    aggregate                   = require('stream-aggregate-promise'),
+    asStream                    = require('as-stream'),
+    transformResolve            = resolveWith.bind(null, nodeResolve),
+    all                         = q.all,
+    extractCommonJSDependencies = require('./transforms/commonjs')
 
 /**
  * Resolve module by id
@@ -56,8 +56,8 @@ function runStreamTransform(transform, mod) {
  * @param {Object} mod a module to run transform over
  * @return {Promise<Object>} a transformed module
  */
-function runTransform(transform, mod) {
-  return q.resolve(transform(mod.filename, mod)).then(function(transformed) {
+function runTransform(transform, mod, opts) {
+  return q.resolve(transform(mod, opts)).then(function(transformed) {
     if (!transformed) return mod
     if (transformed.source) mod.source = transformed.source
     if (transformed.deps) mod.deps = _.extend(mod.deps, transformed.deps)
@@ -161,7 +161,10 @@ module.exports = function(mains, opts) {
 
   function makeMainModule(m) {
     var filename,
-        mod = {entry: true, deps: {}}
+        mod = makeModule()
+
+    mod.entry = true
+
     if (typeof m.pipe === 'function') {
       filename = path.join(basedir, rng(8).toString('hex') + '.js')
       mod.id = filename
@@ -171,6 +174,18 @@ module.exports = function(mains, opts) {
       filename = path.resolve(m)
       mod.id = filename
       mod.filename = filename
+    }
+    return mod
+  }
+
+  function makeModule(id) {
+    var mod = {
+      id: id,
+      deps: {},
+      resolve: function(id, parent) {
+        parent = parent || mod
+        return resolver(id, parent)
+      }
     }
     return mod
   }
@@ -221,23 +236,7 @@ module.exports = function(mains, opts) {
   function walkDeps(mod) {
     return all(Object.keys(mod.deps)
       .filter(function(depId) { return mod.deps[depId] })
-      .map(function(depId) { return walk({id: depId, deps: {}}, mod) }))
-  }
-
-  function extractDeps(filename, mod) {
-    if (opts.noParse && opts.noParse.indexOf(filename) > -1) return
-
-    var deps = detective(mod.source).map(function(id) {
-      var resolved
-      if (opts.filter && !opts.filter(id))
-        resolved = q.resolve({id: id, filename: false})
-      else
-        resolved = resolver(id, mod)
-
-      return resolved.then(function(dep) { mod.deps[dep.id] = dep.filename })
-    })
-
-    return all(deps).then(function() { return mod })
+      .map(function(depId) { return walk(makeModule(depId), mod) }))
   }
 
   function applyTransforms(mod) {
@@ -245,13 +244,13 @@ module.exports = function(mains, opts) {
           return path.relative(path.dirname(entry.filename), mod.filename)
             .split('/').indexOf('node_modules') < 0
         }),
-        txs = [extractDeps],
+        txs = [extractCommonJSDependencies],
         p = (mod.sourcePromise || aggregate(fs.createReadStream(mod.filename)))
             .then(function(source) {
               mod.source = source
               return mod
             })
-
+      
     if (isTopLevel)
       txs = txs.concat(opts.transform)
 
@@ -263,7 +262,7 @@ module.exports = function(mains, opts) {
     return all(txs).then(function(txs) {
       txs.forEach(function(t) {
         p = p.then(function(p) {
-          return (t.length === 1 ? runStreamTransform : runTransform)(t, p)
+          return (t.length === 1 ? runStreamTransform : runTransform)(t, p, opts)
         })
       })
       return p
