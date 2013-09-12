@@ -40,7 +40,7 @@ function resolveWith(resolve, id, parent) {
 }
 
 /**
- * Run stream transform over module
+ * Run streaming transform over module
  *
  * Such transforms are compatible with transforms for browserify
  *
