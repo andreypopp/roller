@@ -1,22 +1,33 @@
 "use strict";
 
-var path        = require('path'),
-    through     = require('through'),
-    _           = require('underscore'),
-    depsSort    = require('deps-sort'),
-    browserPack = require('browser-pack'),
-    duplex      = require('duplexer'),
-    makeGraph   = require('./graph')
+var path            = require('path'),
+    through         = require('through'),
+    _               = require('underscore'),
+    depsSort        = require('deps-sort'),
+    browserPack     = require('browser-pack'),
+    duplex          = require('duplexer'),
+    browserBuiltins = require('browser-builtins'),
+    insertGlobals   = require('insert-module-globals'),
+    makeGraph       = require('./graph')
 
 module.exports = function(spec, opts) {
-  var output = {__common__: {js: packJS(), css: packCSS()}}
+  var entries = _.values(spec),
+      output = {
+        __common__: {
+          js: wrap(packJS(), insertGlobals(entries)),
+          css: packCSS()
+        }
+      }
 
   for (var name in spec) {
     spec[name] = path.resolve(spec[name])
     output[name] = {js: packJS(), css: packCSS()}
   }
 
-  makeGraph(_.values(spec), opts).asPromise().then(function(graph) {
+  opts.modules = opts.module || {}
+  _.extend(opts.modules, browserBuiltins)
+
+  makeGraph(entries, opts).asPromise().then(function(graph) {
     graph = asIndex(graph)
     var seen = {}
 
@@ -66,26 +77,28 @@ function traverseGraphFrom(graph, fromId, func) {
 
   while (toTraverse.length > 0) {
     args = toTraverse.shift()
+    mod = args[0]
+    if (!mod) continue
+
     func.apply(null, args)
 
-    mod = args[0]
-    if (mod.deps)
+    if (mod && mod.deps)
       for (var depId in mod.deps)
-        if (mod.deps[depId])
+        if (mod.deps[depId]) {
           toTraverse.push([graph[mod.deps[depId]], depId, mod])
+        }
   }
 }
 
-function sorted(stream) {
-  var sorter = depsSort()
-  sorter.pipe(stream)
-  return duplex(sorter, stream)
+function wrap(stream, wrapper) {
+  wrapper.pipe(stream)
+  return duplex(wrapper, stream)
 }
 
 function packCSS() {
-  return sorted(through(function(mod) { this.queue(mod.source) }))
+  return wrap(through(function(mod) { this.queue(mod.source) }), depsSort())
 }
 
-function packJS() {
-  return sorted(browserPack({raw: true}))
+function packJS(opts) {
+  return wrap(browserPack({raw: true}), depsSort())
 }
