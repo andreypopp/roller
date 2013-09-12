@@ -14,6 +14,8 @@ var fs                          = require('fs'),
     asStream                    = require('as-stream'),
     transformResolve            = resolveWith.bind(null, nodeResolve),
     all                         = q.all,
+    isString                    = _.isString,
+    extend                      = _.extend,
     extractDependencies = require('./transforms/deps')
 
 /**
@@ -60,7 +62,7 @@ function runTransform(transform, mod, opts) {
   return q.resolve(transform(mod, opts)).then(function(transformed) {
     if (!transformed) return mod
     if (transformed.source) mod.source = transformed.source
-    if (transformed.deps) mod.deps = _.extend(mod.deps, transformed.deps)
+    if (transformed.deps) mod.deps = extend(mod.deps, transformed.deps)
     return mod
   })
 }
@@ -88,7 +90,7 @@ function getTransform(pkg, key) {
  * @return {Promise<Function>} a loaded transform function
  */
 function loadTransform(mod, transform) {
-  if (!_.isString(transform)) return q.resolve(transform)
+  if (!isString(transform)) return q.resolve(transform)
 
   return transformResolve(transform, {basedir: path.dirname(mod.filename)})
     .fail(function() {
@@ -209,7 +211,7 @@ module.exports = function(mains, opts) {
   }
 
   function walk(mod, parent) {
-    if (_.isString(mod)) mod = resolveCache[mod]
+    if (isString(mod)) mod = resolveCache[mod]
     if (seen[mod.filename]) return
     seen[mod.filename] = true
 
