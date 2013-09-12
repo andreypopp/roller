@@ -178,6 +178,26 @@ module.exports = function(mains, opts) {
     return mod
   }
 
+  function walk(mod, parent) {
+    if (isString(mod)) mod = resolveCache[mod]
+    if (seen[mod.filename]) return
+    seen[mod.filename] = true
+
+    var cached = checkExternalCache(mod, parent)
+    if (cached) {
+      emit(cached)
+      return walkDeps(cached, parent)
+    }
+
+    return applyTransforms(mod).then(emit).then(walkDeps)
+  }
+
+  function walkDeps(mod) {
+    return all(Object.keys(mod.deps)
+      .filter(function(id) { return mod.deps[id] })
+      .map(function(id) { return walk(mod.deps[id], mod) }))
+  }
+
   function makeModule(mod) {
     var result = Object.create(moduleProto)
     extend(result, mod)
@@ -226,26 +246,6 @@ module.exports = function(mains, opts) {
     return {id: mod.id, filename: curFilename,
       deps: result.deps, source: result.source, entry: result.entry,
       package: opts.packageCache && opts.packageCache[result.id]}
-  }
-
-  function walk(mod, parent) {
-    if (isString(mod)) mod = resolveCache[mod]
-    if (seen[mod.filename]) return
-    seen[mod.filename] = true
-
-    var cached = checkExternalCache(mod, parent)
-    if (cached) {
-      emit(cached)
-      return walkDeps(cached, parent)
-    }
-
-    return applyTransforms(mod).then(emit).then(walkDeps)
-  }
-
-  function walkDeps(mod) {
-    return all(Object.keys(mod.deps)
-      .filter(function(id) { return mod.deps[id] })
-      .map(function(id) { return walk(mod.deps[id], mod) }))
   }
 
   function isTopLevel(mod) {
