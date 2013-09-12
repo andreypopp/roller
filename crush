@@ -39,12 +39,7 @@ function multiBundle(args, opts) {
     extensions: asArray(opts.extension)
   })
 
-  for (var name in streams) {
-    streams[name].js
-      .pipe(fs.createWriteStream(path.join(outputDir, name) + '.js'))
-    streams[name].css
-      .pipe(fs.createWriteStream(path.join(outputDir, name) + '.css'))
-  }
+  layoutMultiBundle(streams, outputDir)
 }
 
 function graph(args, opts) {
@@ -56,6 +51,13 @@ function graph(args, opts) {
   results.asPromise()
     .then(function(result) { console.log(JSON.stringify(result)) })
     .end()
+}
+
+function layoutMultiBundle(streams, directory) {
+  for (var name in streams)
+    for (var bundle in streams[name])
+      streams[name][bundle]
+        .pipe(fs.createWriteStream(path.join(directory, name) + '.' + bundle))
 }
 
 function bundleName(p) {

@@ -3,10 +3,8 @@
 var path        = require('path'),
     through     = require('through'),
     _           = require('underscore'),
-    values      = _.values,
-
-    packJS      = require('browser-pack'),
-    asStream    = require('as-stream'),
+    depsSort    = require('deps-sort'),
+    browserPack = require('browser-pack'),
     makeGraph   = require('./index')
 
 function asIndex(graph) {
@@ -32,20 +30,31 @@ function traverseGraphFrom(graph, fromId, func) {
   }
 }
 
+function sorted(stream) {
+  var sorter = depsSort()
+  sorter.pipe(stream)
+  return sorter
+}
+
+function packCSS() {
+  return through(function(mod) { this.queue(mod.source) })
+}
+
+function packJS() {
+  return browserPack({raw: true})
+}
+
 module.exports = function(spec, opts) {
-  var common  = {js: through(), css: through()},
-      streams = {__common__: common}
+  var output = {__common__: {js: packJS(), css: packCSS()}}
 
   for (var name in spec) {
     spec[name] = path.resolve(spec[name])
-    streams[name] = {js: through(), css: through()}
+    output[name] = {js: packJS(), css: packCSS()}
   }
 
-  makeGraph(values(spec), opts).asPromise().then(function(graph) {
+  makeGraph(_.values(spec), opts).asPromise().then(function(graph) {
     graph = asIndex(graph)
-    var seen = {}, // {moduleName: number of references from different apps}
-        commonModules = [],
-        modules
+    var seen = {}
 
     // see if we have modules which we refernce several times from different
     // bundles
@@ -57,26 +66,23 @@ module.exports = function(spec, opts) {
     // pack common modules
     for (var id in seen)
       if (seen[id] > 1 && !graph[id].entry) {
-        commonModules.push(graph[id])   
+        output.__common__.js.write(graph[id])
       }
-    asStream.apply(null, commonModules)
-      .pipe(packJS({raw: true}))
-      .pipe(common.js)
+    output.__common__.js.end()
 
     // pack app bundles
     for (var name in spec) {
-      modules = []
       traverseGraphFrom(graph, spec[name], function(mod) {
         if (seen[mod.id] > 1) return // it's in common bundle
-        modules.push(mod)
+        if (/.*\.(css|less|sass|scss|styl)/i.exec(mod.id))
+          output[name].css.write(mod)
+        else
+          output[name].js.write(mod)
       })
-      asStream.apply(null, modules)
-        .pipe(packJS({raw: true}))
-        .pipe(streams[name].js)
+      output[name].js.end()
     }
 
   }).end()
 
-
-  return streams
+  return output
 }
