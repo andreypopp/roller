@@ -15,16 +15,11 @@ function unquote(str) {
 module.exports = function(mod, opts) {
   if (!/.*\.css/.exec(mod.filename)) return
 
-  var deps = {},
-      css = parse(mod.source.toString()),
-      resolutions = unique(css.stylesheet.rules
+  var css = parse(mod.source.toString()),
+      deps = css.stylesheet.rules
         .filter(isImportRule)
-        .map(function(r) { return unquote(r.import) }))
-        .map(function(r) { return mod.resolve(r) })
+        .map(function(r) { return unquote(r.import) })
 
-  return all(resolutions)
-    .then(function(resolved) {
-      resolved.forEach(function(r) { deps[r.id] = r })
-      return {deps: deps}
-    })
+  return mod.resolveMany(unique(deps))
+    .then(function(deps) { return {deps: deps} })
 }

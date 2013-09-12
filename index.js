@@ -141,6 +141,23 @@ function moduleToResult(mod) {
 module.exports = function(mains, opts) {
   opts = opts || {}
 
+  var moduleProto = {
+    resolve: function(id, parent) {
+      if (opts.filter && !opts.filter(id))
+        return q.resolve({id: id, filename: false})
+      else
+        return resolver(id, parent || this)
+    },
+    resolveMany: function(ids, parent) {
+      return all(ids.map(function(id) {return this.resolve(id, parent)}, this))
+        .then(function(resolved) {
+          var result = {}
+          resolved.forEach(function(r) { result[r.id] = r })
+          return result
+        })
+    }
+  }
+
   var output = through(),
       basedir = opts.basedir || process.cwd(),
       resolve = resolveWith.bind(null, opts.resolve || browserResolve),
@@ -161,6 +178,13 @@ module.exports = function(mains, opts) {
     return mod
   }
 
+  function makeModule(mod) {
+    var result = Object.create(moduleProto)
+    extend(result, mod)
+    result.deps = mod.deps || {}
+    return result
+  }
+
   function makeMainModule(m) {
     var filename,
         mod = makeModule({entry: true})
@@ -175,12 +199,6 @@ module.exports = function(mains, opts) {
       mod.id = filename
       mod.filename = filename
     }
-    return mod
-  }
-
-  function makeModule(mod) {
-    mod.deps = mod.deps || {}
-    mod.resolve = function(id, parent) { return resolver(id, parent || mod) }
     return mod
   }
 
