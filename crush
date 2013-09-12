@@ -1,20 +1,72 @@
 #!/usr/bin/env node
-var crush   = require('./index'),
-    _  = require('underscore')
+var fs      = require('fs'),
+    path    = require('path'),
+    crush   = require('./index'),
+    bundler = require('./multibundler'),
+    _       = require('underscore')
     
-var args  = require('optimist').argv
+var argv  = require('optimist').argv,
+    command = argv._[0],
+    args = argv._.slice(1)
+
+switch (command) {
+  case 'graph':
+    graph(args, argv)
+    break
+  case 'multibundle':
+    multiBundle(args, argv)
+    break
+  default:
+    error('unknown command')
+}
+
+function multiBundle(args, opts) {
+  var spec = {},
+      outputDir = path.resolve(opts.output || opts.o || './')
+
+  args.forEach(function(b) {
+    if (b.indexOf(':') > -1) {
+      b = b.split(':')
+      spec[b[0]] = b[1]
+    }
+    else {
+      spec[bundleName(b)] = b
+    }
+  })
+
+  var streams = bundler(spec, {
+    transform: asArray(opts.transform, opts.t),
+    extensions: asArray(opts.extension)
+  })
+
+  for (var name in streams) {
+    streams[name].js
+      .pipe(fs.createWriteStream(path.join(outputDir, name) + '.js'))
+    streams[name].css
+      .pipe(fs.createWriteStream(path.join(outputDir, name) + '.css'))
+  }
+}
+
+function graph(args, opts) {
+  var results = crush(args, {
+    transform: asArray(opts.transform, opts.t),
+    extensions: asArray(opts.extension)
+  })
+
+  results.asPromise()
+    .then(function(result) { console.log(JSON.stringify(result)) })
+    .end()
+}
+
+function bundleName(p) {
+  return path.basename(p).replace(/\..*$/, '')
+}
 
 function asArray() {
   return _.unique(_.flatten(arguments))
 }
 
-var results = crush(args._, {
-  transform: asArray(args.transform, args.t),
-  extensions: asArray(args.extension)
-})
-
-results.asPromise()
-  .then(function(result) {
-    console.log(JSON.stringify(result))
-  })
-  .end()
+function error(msg, code) {
+  console.error('error:', msg)
+  process.exit(code || 1)
+}
