@@ -189,6 +189,8 @@ module.exports = function(mains, opts) {
     return mod
   }
 
+  // Wrapper around browser-resolve which passes configurations and caches
+  // resolutions
   function resolver(id, parent) {
     parent.packageFilter = opts.packageFilter
     parent.extensions = opts.extensions
@@ -240,6 +242,8 @@ module.exports = function(mains, opts) {
       .map(function(depId) { return walk(makeModule(depId), mod) }))
   }
 
+  // Apply global and per-package transforms on a module
+  // It automatically inserts extractCommonJSDependencies transform
   function applyTransforms(mod) {
     var isTopLevel = entries.some(function (entry) {
           return path.relative(path.dirname(entry.filename), mod.filename)
