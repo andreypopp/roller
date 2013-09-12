@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-var crush = require('./index')
+var crush   = require('./index'),
+    _  = require('underscore')
     
-    
-var args  = require('optimist')
-  .argv
+var args  = require('optimist').argv
+
+function asArray() {
+  return _.unique(_.flatten(arguments))
+}
 
 var results = crush(args._, {
-  transform: [].concat(args.transform).concat(args.t).filter(Boolean)
+  transform: asArray(args.transform, args.t),
+  extensions: asArray(args.extension)
 })
 
 results.asPromise()
