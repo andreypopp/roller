@@ -24,7 +24,7 @@ module.exports = function(mod, opts) {
 
   return all(resolutions)
     .then(function(resolved) {
-      resolved.forEach(function(r) { deps[r.id] = r.filename })
+      resolved.forEach(function(r) { deps[r.id] = r })
       return {deps: deps}
     })
 }

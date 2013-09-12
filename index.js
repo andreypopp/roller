@@ -14,7 +14,7 @@ var fs                          = require('fs'),
     asStream                    = require('as-stream'),
     transformResolve            = resolveWith.bind(null, nodeResolve),
     all                         = q.all,
-    extractCommonJSDependencies = require('./transforms/commonjs')
+    extractDependencies = require('./transforms/deps')
 
 /**
  * Resolve module by id
@@ -116,11 +116,13 @@ function loadTransform(mod, transform) {
  */
 function moduleToResult(mod) {
   if (!mod.filename) return mod
-  var result = {id: mod.filename, source: mod.source, deps: mod.deps}
+  var result = {id: mod.filename, source: mod.source, deps: {}}
   if (Buffer.isBuffer(result.source))
     result.source = result.source.toString()
   if (mod.entry)
     result.entry = true
+  for (var k in mod.deps)
+    result.deps[k] = mod.deps[k].filename
   return result
 }
 
@@ -140,14 +142,12 @@ module.exports = function(mains, opts) {
   var output = through(),
       basedir = opts.basedir || process.cwd(),
       resolve = resolveWith.bind(null, opts.resolve || browserResolve),
-      cache = {},
+      resolveCache = {},
       seen = {},
       entries = [].concat(mains).filter(Boolean).map(makeMainModule)
 
   all(entries.map(function(mod) {return walk(mod, {filename: '/', id: '/'})}))
-    .fail(function(err) {
-      output.emit('error', err)
-    })
+    .fail(output.emit.bind(output, 'error'))
     .fin(output.queue.bind(output, null))
 
   output.asPromise = function() { return aggregate(this) }
@@ -161,9 +161,7 @@ module.exports = function(mains, opts) {
 
   function makeMainModule(m) {
     var filename,
-        mod = makeModule()
-
-    mod.entry = true
+        mod = makeModule({entry: true})
 
     if (typeof m.pipe === 'function') {
       filename = path.join(basedir, rng(8).toString('hex') + '.js')
@@ -178,26 +176,20 @@ module.exports = function(mains, opts) {
     return mod
   }
 
-  function makeModule(id) {
-    var mod = {
-      id: id,
-      deps: {},
-      resolve: function(id, parent) {
-        return resolver(id, parent || mod)
-      }
-    }
+  function makeModule(mod) {
+    mod.deps = mod.deps || {}
+    mod.resolve = function(id, parent) { return resolver(id, parent || mod) }
     return mod
   }
 
-  // Wrapper around browser-resolve which passes configurations and caches
-  // resolutions
+  // Wrapper around browser-resolve which passes configurations
   function resolver(id, parent) {
     parent.packageFilter = opts.packageFilter
     parent.extensions = opts.extensions
     parent.modules = opts.modules
     parent.paths = []
-    var bucket = (cache[parent.filename] = cache[parent.filename] || {})
-    return bucket[id] ? bucket[id] : bucket[id] = resolve(id, parent)
+    return resolve(id, parent).then(makeModule)
+      .then(function(mod) { return resolveCache[mod.id] = mod })
       .fail(function(err) {
         err.message += [', module required from', parent.filename].join(' ')
         throw err
@@ -206,7 +198,7 @@ module.exports = function(mains, opts) {
 
   // Allows to store module and package definitions in a opts.cache and
   // opts.packageCache respectively, this is how module-deps does it
-  function checkCache(mod, parent) {
+  function checkExternalCache(mod, parent) {
     if (!(opts.cache && opts.cache[parent.filename])) return
     var curFilename = opts.cache[parent.filename].deps[mod.id]
     var result = opts.cache[curFilename]
@@ -217,45 +209,33 @@ module.exports = function(mains, opts) {
   }
 
   function walk(mod, parent) {
-    var cached = checkCache(mod, parent),
-        resolved
+    if (_.isString(mod)) mod = resolveCache[mod]
+    if (seen[mod.filename]) return
+    seen[mod.filename] = true
 
+    var cached = checkExternalCache(mod, parent)
     if (cached) {
-      if (seen[cached.filename]) return
       emit(cached)
       return walkDeps(cached, parent)
     }
 
-    if (!mod.filename && mod.id)
-      resolved = resolver(mod.id, parent).then(function(r) {
-        mod.filename = r.filename
-        mod.package = r.package
-        return mod
-      })
-    else
-      resolved = q.resolve(mod)
-
-    return resolved.then(function(mod) {
-      if (seen[mod.filename]) return
-      seen[mod.filename] = true
-      return applyTransforms(mod).then(emit).then(walkDeps)
-    })
+    return applyTransforms(mod).then(emit).then(walkDeps)
   }
 
   function walkDeps(mod) {
     return all(Object.keys(mod.deps)
-      .filter(function(depId) { return mod.deps[depId] })
-      .map(function(depId) { return walk(makeModule(depId), mod) }))
+      .filter(function(id) { return mod.deps[id] })
+      .map(function(id) { return walk(mod.deps[id], mod) }))
   }
 
   // Apply global and per-package transforms on a module
-  // It automatically inserts extractCommonJSDependencies transform
+  // It automatically inserts extractDependencies transform
   function applyTransforms(mod) {
     var isTopLevel = entries.some(function (entry) {
           return path.relative(path.dirname(entry.filename), mod.filename)
             .split('/').indexOf('node_modules') < 0
         }),
-        txs = [extractCommonJSDependencies],
+        txs = [extractDependencies],
         p = (mod.sourcePromise || aggregate(fs.createReadStream(mod.filename)))
             .then(function(source) {
               mod.source = source
