@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 var fs      = require('fs'),
     path    = require('path'),
-    crush   = require('./index'),
+    graph   = require('./index'),
     bundler = require('./multibundler'),
     _       = require('underscore')
-    
+
 var argv  = require('optimist').argv,
     command = argv._[0],
     args = argv._.slice(1)
@@ -43,7 +43,7 @@ function multiBundle(args, opts) {
 }
 
 function graph(args, opts) {
-  var results = crush(args, {
+  var results = graph(args, {
     transform: asArray(opts.transform, opts.t),
     extensions: asArray(opts.extension)
   })

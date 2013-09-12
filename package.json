@@ -1,12 +1,12 @@
 {
-  "name": "crush",
+  "name": "roller",
   "version": "0.0.0",
   "description": "CommonJS bundler which respects Node module loading mechanism",
   "main": "index.js",
   "scripts": {
     "test": "./node_modules/.bin/mocha specs/*.js"
   },
-  "repository": "andreypopp/crush",
+  "repository": "andreypopp/roller",
   "keywords": [
     "commonjs",
     "browser",
