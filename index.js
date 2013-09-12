@@ -29,7 +29,10 @@ var fs                          = require('fs'),
 function resolveWith(resolve, id, parent) {
   var p = q.defer()
   resolve(id, parent, function(err, filename, pkg) {
-    err ? p.reject(err) : p.resolve({id: id, filename: filename, package: pkg})
+    if (err)
+      p.reject(err)
+    else
+      p.resolve({id: id, filename: filename, package: pkg})
   })
   return p
 }
