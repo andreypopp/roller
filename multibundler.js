@@ -5,6 +5,7 @@ var path        = require('path'),
     _           = require('underscore'),
     depsSort    = require('deps-sort'),
     browserPack = require('browser-pack'),
+    duplex      = require('duplexer'),
     makeGraph   = require('./index')
 
 module.exports = function(spec, opts) {
@@ -78,13 +79,13 @@ function traverseGraphFrom(graph, fromId, func) {
 function sorted(stream) {
   var sorter = depsSort()
   sorter.pipe(stream)
-  return sorter
+  return duplex(sorter, stream)
 }
 
 function packCSS() {
-  return through(function(mod) { this.queue(mod.source) })
+  return sorted(through(function(mod) { this.queue(mod.source) }))
 }
 
 function packJS() {
-  return browserPack({raw: true})
+  return sorted(browserPack({raw: true}))
 }

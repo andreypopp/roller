@@ -28,7 +28,8 @@
     "optimist": "~0.6.0",
     "css-parse": "~1.5.3",
     "browser-pack": "~0.10.1",
-    "deps-sort": "~0.1.1"
+    "deps-sort": "~0.1.1",
+    "duplexer": "~0.1.1"
   },
   "devDependencies": {
     "tap": "~0.4.4",
