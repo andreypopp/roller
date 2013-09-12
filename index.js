@@ -12,10 +12,13 @@ var fs                          = require('fs'),
     aggregate                   = require('stream-aggregate-promise'),
     asStream                    = require('as-stream'),
     transformResolve            = resolveWith.bind(null, nodeResolve),
+
     all                         = q.all,
     isString                    = _.isString,
     extend                      = _.extend,
-    extractDependencies = require('./transforms/deps')
+
+    extractDependencies         = require('./transforms/deps'),
+    jsonToCommonJS              = require('./transforms/json')
 
 /**
  * Resolve module by id
@@ -277,6 +280,7 @@ module.exports = function(mains, opts) {
 
     txs = txs.filter(Boolean).map(loadTransform.bind(null, mod))
     txs.push(extractDependencies)
+    txs.push(jsonToCommonJS)
 
     return all(txs).then(function(txs) {
       txs.forEach(function(t) {
