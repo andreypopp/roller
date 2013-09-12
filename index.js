@@ -143,6 +143,8 @@ function moduleToResult(mod) {
 module.exports = function(mains, opts) {
   opts = opts || {}
 
+  opts.extensions.unshift('.js')
+
   var moduleProto = {
     resolve: function(id, parent) {
       if (opts.filter && !opts.filter(id))
@@ -260,7 +262,7 @@ module.exports = function(mains, opts) {
   // Apply global and per-package transforms on a module
   // It automatically inserts extractDependencies transform
   function applyTransforms(mod) {
-    var txs = [extractDependencies],
+    var txs = [],
         p = (mod.sourcePromise || aggregate(fs.createReadStream(mod.filename)))
             .then(function(source) {
               mod.source = source
@@ -274,6 +276,7 @@ module.exports = function(mains, opts) {
       txs = txs.concat(getTransform(mod.package, opts.transformKey))
 
     txs = txs.filter(Boolean).map(loadTransform.bind(null, mod))
+    txs.push(extractDependencies)
 
     return all(txs).then(function(txs) {
       txs.forEach(function(t) {
