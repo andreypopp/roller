@@ -1,4 +1,4 @@
-var parser = require('../');
+var parser = require('../graph');
 var test = require('tap').test;
 var fs = require('fs');
 

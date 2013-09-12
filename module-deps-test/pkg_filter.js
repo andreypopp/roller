@@ -1,4 +1,4 @@
-var mdeps = require('../');
+var mdeps = require('../graph');
 var test = require('tap').test;
 var JSONStream = require('JSONStream');
 var packer = require('browser-pack');

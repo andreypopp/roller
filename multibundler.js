@@ -6,7 +6,7 @@ var path        = require('path'),
     depsSort    = require('deps-sort'),
     browserPack = require('browser-pack'),
     duplex      = require('duplexer'),
-    makeGraph   = require('./index')
+    makeGraph   = require('./graph')
 
 module.exports = function(spec, opts) {
   var output = {__common__: {js: packJS(), css: packCSS()}}

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-var fs      = require('fs'),
-    path    = require('path'),
-    graph   = require('./index'),
-    bundler = require('./multibundler'),
-    _       = require('underscore')
+var fs            = require('fs'),
+    path          = require('path'),
+    graph         = require('./graph'),
+    multibundler  = require('./multibundler'),
+    _             = require('underscore')
 
 var argv  = require('optimist').argv,
     command = argv._[0],
@@ -21,20 +21,11 @@ switch (command) {
 }
 
 function multiBundle(args, opts) {
-  var spec = {},
+  var spec = parseMultiBundleSpec(args),
       outputDir = path.resolve(opts.output || opts.o || './')
 
-  args.forEach(function(b) {
-    if (b.indexOf(':') > -1) {
-      b = b.split(':')
-      spec[b[0]] = b[1]
-    }
-    else {
-      spec[bundleName(b)] = b
-    }
-  })
 
-  var streams = bundler(spec, {
+  var streams = multibundler(spec, {
     transform: asArray(opts.transform, opts.t),
     extensions: asArray(opts.extension)
   })
@@ -58,6 +49,20 @@ function layoutMultiBundle(streams, directory) {
     for (var bundle in streams[name])
       streams[name][bundle]
         .pipe(fs.createWriteStream(path.join(directory, name) + '.' + bundle))
+}
+
+function parseMultiBundleSpec(args) {
+  var spec = {}
+  args.forEach(function(b) {
+    if (b.indexOf(':') > -1) {
+      b = b.split(':')
+      spec[b[0]] = b[1]
+    }
+    else {
+      spec[bundleName(b)] = b
+    }
+  })
+  return spec
 }
 
 function bundleName(p) {

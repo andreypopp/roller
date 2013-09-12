@@ -20,6 +20,10 @@ release-minor: test lint
 release-major: test lint
 	@$(call release,major)
 
+fix-module-deps-testsuite:
+	sed -i -E "s_require('../')_require('../graph')_g" module-deps-test/*.js
+	rm -f module-deps-test/*-E
+
 publish:
 	git push --tags origin HEAD:master
 	npm publish

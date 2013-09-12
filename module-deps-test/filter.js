@@ -1,6 +1,6 @@
 var test = require('tap').test;
 var path  = require('path')
-var mdeps = require('../')
+var mdeps = require('../graph')
 
 var core = ['events', 'util', 'dns', 'dgram', 'http', 'https', 'net', 'fs']
 
