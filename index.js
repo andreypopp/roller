@@ -228,21 +228,24 @@ module.exports = function(mains, opts) {
       .map(function(id) { return walk(mod.deps[id], mod) }))
   }
 
+  function isTopLevel(mod) {
+    return entries.some(function (entry) {
+      return path.relative(path.dirname(entry.filename), mod.filename)
+        .split('/').indexOf('node_modules') < 0
+    })
+  }
+
   // Apply global and per-package transforms on a module
   // It automatically inserts extractDependencies transform
   function applyTransforms(mod) {
-    var isTopLevel = entries.some(function (entry) {
-          return path.relative(path.dirname(entry.filename), mod.filename)
-            .split('/').indexOf('node_modules') < 0
-        }),
-        txs = [extractDependencies],
+    var txs = [extractDependencies],
         p = (mod.sourcePromise || aggregate(fs.createReadStream(mod.filename)))
             .then(function(source) {
               mod.source = source
               return mod
             })
 
-    if (isTopLevel)
+    if (isTopLevel(mod))
       txs = txs.concat(opts.transform)
 
     if (mod.package && opts.transformKey)
