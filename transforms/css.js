@@ -1,3 +1,7 @@
+/* jshint asi: true, expr: true, globalstrict: true */
+/* global require, Buffer, process, module */
+"use strict";
+
 var parse   = require('css-parse'),
     all     = require('kew').all,
     unique  = require('underscore').unique

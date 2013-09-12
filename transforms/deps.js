@@ -1,3 +1,7 @@
+/* jshint asi: true, expr: true, globalstrict: true */
+/* global require, Buffer, process, module */
+"use strict";
+
 var q         = require('kew'),
     detective = require('detective')
 
