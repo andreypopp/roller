@@ -1,5 +1,14 @@
 {
+  "undef": true,
+  "unused": true,
   "asi": true,
   "expr": true,
-  "globalstrict": true
+  "globalstrict": true,
+  "globals": {
+    "Buffer": false,
+    "require": false,
+    "process": false,
+    "module": false,
+    "exports": false
+  }
 }

@@ -1,4 +1,3 @@
-/* global require, Buffer, process, module */
 "use strict";
 
 var detective = require('detective')
