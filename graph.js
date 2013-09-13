@@ -13,11 +13,31 @@ var fs                          = require('fs'),
     transformResolve            = resolveWith.bind(null, nodeResolve),
 
     all                         = q.all,
+    asPromise                   = q.resolve,
     isString                    = _.isString,
+    isObject                    = _.isObject,
     extend                      = _.extend,
+    isArray                     = Array.isArray,
 
     extractDependencies         = require('./transforms/deps'),
     jsonToCommonJS              = require('./transforms/json')
+
+function mergeInto(target, source) {
+  if (!source) return target
+  for (var k in source) {
+    var t = target[k], s = source[k]
+    if (!(k in target))
+      target[k] = source[k]
+    else
+      if (isArray(t) && isArray(s))
+        target[k] = t.concat(s)
+      else if (isObject(t) && isObject(s))
+        target[k] = mergeInto(t, s)
+      else
+        target[k] = s
+  }
+  return target
+}
 
 /**
  * Resolve module by id
@@ -63,12 +83,7 @@ function runStreamTransform(transform, mod) {
  * @return {Promise<Object>} a transformed module
  */
 function runTransform(transform, mod, opts) {
-  return q.resolve(transform(mod, opts)).then(function(transformed) {
-    if (!transformed) return mod
-    if (transformed.source) mod.source = transformed.source
-    if (transformed.deps) mod.deps = extend(mod.deps, transformed.deps)
-    return mod
-  })
+  return asPromise(transform(mod, opts)).then(mergeInto.bind(null, mod))
 }
 
 /**
@@ -94,7 +109,7 @@ function getTransform(pkg, key) {
  * @return {Promise<Function>} a loaded transform function
  */
 function loadTransform(mod, transform) {
-  if (!isString(transform)) return q.resolve(transform)
+  if (!isString(transform)) return asPromise(transform)
 
   return transformResolve(transform, {basedir: path.dirname(mod.filename)})
     .fail(function() {
@@ -132,6 +147,15 @@ function moduleToResult(mod) {
   return result
 }
 
+function readModuleSource(mod) {
+  if (mod.source) return asPromise(mod)
+  var promise = mod.sourcePromise || aggregate(fs.createReadStream(mod.filename))
+  return promise.then(function(source) {
+    mod.source = source
+    return mod
+  })
+}
+
 /**
  * Resolve a graph of dependencies for a specified set of modules
  *
@@ -150,7 +174,7 @@ module.exports = function(mains, opts) {
   var moduleProto = {
     resolve: function(id, parent) {
       if (opts.filter && !opts.filter(id))
-        return q.resolve({id: id, filename: false})
+        return asPromise({id: id, filename: false})
       else
         return resolver(id, parent || this)
     },
@@ -264,12 +288,7 @@ module.exports = function(mains, opts) {
   // Apply global and per-package transforms on a module
   // It automatically inserts extractDependencies transform
   function applyTransforms(mod) {
-    var txs = [],
-        p = (mod.sourcePromise || aggregate(fs.createReadStream(mod.filename)))
-            .then(function(source) {
-              mod.source = source
-              return mod
-            })
+    var txs = [], p = readModuleSource(mod)
 
     if (isTopLevel(mod))
       txs = txs.concat(opts.transform)
