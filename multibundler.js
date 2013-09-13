@@ -13,7 +13,7 @@ var path            = require('path'),
     duplex          = require('duplexer'),
     browserBuiltins = require('browser-builtins'),
     insertGlobals   = require('insert-module-globals'),
-    makeGraph       = require('./graph')
+    collectGraph    = require('./graph')
 
 module.exports = function(spec, opts) {
   var entries = values(spec).map(function(p) { return path.resolve(p) }),
@@ -27,7 +27,7 @@ module.exports = function(spec, opts) {
   opts.modules = opts.modules || {}
   extend(opts.modules, browserBuiltins)
 
-  makeGraph(entries, opts).asPromise()
+  collectGraph(entries, opts).asPromise()
     .then(function(graph) {
       graph = asIndex(graph)
 
