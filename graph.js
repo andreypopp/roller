@@ -19,8 +19,8 @@ var fs                          = require('fs'),
     extend                      = _.extend,
     isArray                     = Array.isArray,
 
-    extractDependencies         = require('./transforms/deps'),
-    jsonToCommonJS              = require('./transforms/json')
+    depsTransform               = require('./transforms/deps'),
+    jsonTransform               = require('./transforms/json')
 
 module.exports = function(mains, opts) {
   return new Graph(mains, opts).toStream()
@@ -165,8 +165,8 @@ Graph.prototype = {
       txs = txs.concat(getTransform(mod.package, self.opts.transformKey))
 
     txs = txs.filter(Boolean).map(loadTransform.bind(null, mod))
-    txs.push(extractDependencies)
-    txs.push(jsonToCommonJS)
+    txs.push(depsTransform)
+    txs.push(jsonTransform)
 
     return all(txs).then(function(txs) {
       txs.forEach(function(t) {
