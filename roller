@@ -9,9 +9,10 @@ var argv  = require('optimist').argv,
     command = argv._[0],
     args = argv._.slice(1)
 
+
 switch (command) {
   case 'graph':
-    graph(args, argv)
+    showGraph(args, argv)
     break
   case 'multibundle':
     multiBundle(args, argv)
@@ -33,7 +34,7 @@ function multiBundle(args, opts) {
   layoutMultiBundle(streams, outputDir)
 }
 
-function graph(args, opts) {
+function showGraph(args, opts) {
   var results = graph(args, {
     transform: asArray(opts.transform, opts.t),
     extensions: asArray(opts.extension)
