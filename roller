@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 var fs            = require('fs'),
     path          = require('path'),
-    graph         = require('./graph'),
+    Graph         = require('./graph').Graph,
     multibundler  = require('./multibundler'),
     _             = require('underscore')
 
@@ -28,19 +28,19 @@ function multiBundle(args, opts) {
 
   var streams = multibundler(spec, {
     transform: asArray(opts.transform, opts.t),
-    extensions: asArray(opts.extension)
+    extensions: ['.js'].concat(asArray(opts.extension))
   })
 
   layoutMultiBundle(streams, outputDir)
 }
 
 function showGraph(args, opts) {
-  var results = graph(args, {
+  var results = new Graph(args, {
     transform: asArray(opts.transform, opts.t),
-    extensions: asArray(opts.extension)
+    extensions: ['.js'].concat(asArray(opts.extension))
   })
 
-  results.asPromise()
+  results.toPromise()
     .then(function(result) { console.log(JSON.stringify(result)) })
     .end()
 }

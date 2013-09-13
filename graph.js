@@ -13,7 +13,7 @@ var fs                          = require('fs'),
     transformResolve            = resolveWith.bind(null, nodeResolve),
 
     all                         = q.all,
-    asPromise                   = q.resolve,
+    toPromise                   = q.resolve,
     clone                       = _.clone,
     isString                    = _.isString,
     isObject                    = _.isObject,
@@ -38,14 +38,6 @@ function mergeInto(target, source) {
   return result
 }
 
-/**
- * Resolve module by id
- *
- * @param {Function<String, Object, Callback>} resolve
- * @param {String} id
- * @param {Object} parent
- * @return {Promise<Object>} an object with id, filename and package keys
- */
 function resolveWith(resolve, id, parent) {
   var p = q.defer()
   resolve(id, parent, function(err, filename, pkg) {
@@ -57,15 +49,6 @@ function resolveWith(resolve, id, parent) {
   return p
 }
 
-/**
- * Run streaming transform over module
- *
- * Such transforms are compatible with transforms for browserify
- *
- * @param {Function<String>} transform a transform factory
- * @param {Object} mod a module to run transform over
- * @return {Promise<Object>} a transformed module
- */
 function runStreamTransform(transform, mod) {
   return aggregate(asStream(mod.source).pipe(transform(mod.id)))
     .then(function(source) {
@@ -74,41 +57,17 @@ function runStreamTransform(transform, mod) {
     })
 }
 
-/**
- * Run transform over module
- *
- * @param {Function<String>} transform a transform factory
- * @param {Object} mod a module to run transform over
- * @return {Promise<Object>} a transformed module
- */
-function runTransform(transform, mod, opts) {
-  return asPromise(transform(mod, opts)).then(mergeInto.bind(null, mod))
+function runTransform(transform, mod, graph) {
+  return toPromise(transform(mod, graph)).then(mergeInto.bind(null, mod))
 }
 
-/**
- * Load transform from a package
- *
- * @param {Object} pkg a package to load transform from
- * @param {Array<String>} key an array of strings represents a path in a package
- * @return {Array<String>} a list of transform ids
- */
 function getTransform(pkg, key) {
   key.forEach(function (k) { if (pkg && typeof pkg === 'object') pkg = pkg[k] })
   return [].concat(pkg).filter(Boolean)
 }
 
-/**
- * Load transform relative to specified module
- *
- * It tries to resolve transform relative to module's filename first and then
- * fallback's to process.cwd()
- *
- * @param {Object} mod a module
- * @param {String} transform a transform module id
- * @return {Promise<Function>} a loaded transform function
- */
 function loadTransform(mod, transform) {
-  if (!isString(transform)) return asPromise(transform)
+  if (!isString(transform)) return toPromise(transform)
 
   return transformResolve(transform, {basedir: path.dirname(mod.id)})
     .fail(function() {
@@ -128,12 +87,6 @@ function loadTransform(mod, transform) {
     })
 }
 
-/**
- * Convert module object into a format suitable for browser-pack
- *
- * @param {Object} mod an object representing some module
- * @return {Object} an object suitable for browser-pack consumption
- */
 function moduleToResult(mod) {
   mod = clone(mod)
   delete mod.package
@@ -145,142 +98,132 @@ function moduleToResult(mod) {
   return mod
 }
 
-function readModuleSource(mod) {
-  if (mod.source) return asPromise(mod)
-  var promise = mod.sourcePromise || aggregate(fs.createReadStream(mod.id))
-  return promise.then(function(source) {
-    mod.source = source
-    return mod
-  })
-}
+function Graph(mains, opts) {
+  var self = this
 
-/**
- * Resolve a graph of dependencies for a specified set of modules
- *
- * This is compatible with module-deps implementation with a few addition
- * features
- *
- * @param {Array<String|Stream>} mains a list of module ids, paths or streams
- * @param {Object} opts an options object compatible with module-deps
- * @return {Stream<Object>} a stream of resolved modules with dependencies
- */
-module.exports = function(mains, opts) {
-  opts = opts || {}
-
-  if (opts.extensions) opts.extensions.unshift('.js')
-
-  extend(opts, {
-    resolve: function(id, parent) {
-      if (opts.filter && !opts.filter(id))
-        return asPromise({id: false})
-      else
-        return resolver(id, parent)
-    },
-    resolveDeps: function(ids, parent) {
-      var result = {},
-          resolutions = all(ids.map(function(id) {
-            return opts.resolve(id, parent).then(function(r) {result[id] = r.id})
-          }))
-      return resolutions.then(function() { return result })
-    }
-  })
-
-  var output = through(),
-      basedir = opts.basedir || process.cwd(),
-      resolve = resolveWith.bind(null, browserResolve),
-      resolved = {},
-      seen = {},
-      entries = [].concat(mains).filter(Boolean).map(makeMainModule)
-
-  all(entries.map(function(mod) {return walk(mod, {id: '/'})}))
-    .fail(output.emit.bind(output, 'error'))
-    .fin(output.queue.bind(output, null))
-
-  output.asPromise = function() { return aggregate(this) }
-
-  return output
-
-  function emit(mod) {
-    output.queue(moduleToResult(mod))
-    return mod
-  }
-
-  function walk(mod, parent) {
-    if (isString(mod)) mod = resolved[mod]
-    if (seen[mod.id]) return
-    seen[mod.id] = true
-
-    var cached = checkExternalCache(mod, parent)
-    if (cached) {
-      emit(cached)
-      return walkDeps(cached, parent)
-    }
-
-    return applyTransforms(mod).then(emit).then(walkDeps)
-  }
-
-  function walkDeps(mod) {
-    return all(Object.keys(mod.deps)
-      .filter(function(id) { return mod.deps[id] })
-      .map(function(id) { return walk(mod.deps[id], mod) }))
-  }
-
-  function makeMainModule(m) {
+  self.opts = opts || {}
+  self.output = through()
+  self.basedir = self.opts.basedir || process.cwd()
+  self.resolveImpl = resolveWith.bind(null, self.opts.resolve || browserResolve)
+  self.resolved = {}
+  self.seen = {}
+  self.entries = [].concat(mains).filter(Boolean).map(function(m) {
     var mod = {entry: true}
-
     if (typeof m.pipe === 'function') {
-      mod.id = path.join(basedir, rng(8).toString('hex') + '.js')
+      mod.id = path.join(self.basedir, rng(8).toString('hex') + '.js')
       mod.sourcePromise = aggregate(m)
     } else {
       mod.id = path.resolve(m)
     }
     return mod
-  }
+  })
+}
 
-  // Wrapper around browser-resolve which passes configurations
-  function resolver(id, parent) {
-    var relativeTo = {
-      packageFilter: opts.packageFilter,
-      extensions: opts.extensions,
-      modules: opts.modules,
-      paths: [],
-      filename: parent.id,
-      package: parent.package
+Graph.prototype = {
+
+  resolve: function(id, parent) {
+    var self = this
+    if (self.opts.filter && !self.opts.filter(id))
+      return toPromise({id: false})
+    else {
+      var relativeTo = {
+        packageFilter: self.opts.packageFilter,
+        extensions: self.opts.extensions,
+        modules: self.opts.modules,
+        paths: [],
+        filename: parent.id,
+        package: parent.package
+      }
+      return self.resolveImpl(id, relativeTo)
+        .then(function(r) { return self.resolved[r.id] = r })
+        .fail(function(err) {
+          err.message += [', module required from', parent.id].join(' ')
+          throw err
+        })
     }
-    return resolve(id, relativeTo)
-      .then(function(r) { return resolved[r.id] = r })
-      .fail(function(err) {
-        err.message += [', module required from', parent.id].join(' ')
-        throw err
+  },
 
-      })
-  }
+  resolveDeps: function(ids, parent) {
+    var self = this
+    var result = {},
+        resolutions = all(ids.map(function(id) {
+          return self.resolve(id, parent).then(function(r) {result[id] = r.id})
+        }))
+    return resolutions.then(function() { return result })
+  },
 
-  // Allows to store module and package definitions in a opts.cache and
-  // opts.packageCache respectively, this is how module-deps does it
-  function checkExternalCache(mod, parent) {
-    if (!(opts.cache && opts.cache[parent.id])) return
-    var id = opts.cache[parent.id].deps[mod.id]
-    return opts.cache[id]
-  }
+  toStream: function() {
+    var self = this
+    all(self.entries.map(function(mod) {return self.walk(mod, {id: '/'})}))
+      .fail(self.output.emit.bind(self.output, 'error'))
+      .fin(self.output.queue.bind(self.output, null))
+    return self.output
+  },
 
-  function isTopLevel(mod) {
-    return entries.some(function (entry) {
+  toPromise: function() {
+    return aggregate(this.toStream())
+  },
+
+  walk: function(mod, parent) {
+    var self = this
+    if (isString(mod)) mod = self.resolved[mod]
+    if (self.seen[mod.id]) return
+    self.seen[mod.id] = true
+
+    var cached = self.checkCache(mod, parent)
+    if (cached) {
+      self.emit(cached)
+      return self.walkDeps(cached, parent)
+    }
+
+    return self.applyTransforms(mod)
+      .then(self.emit.bind(self))
+      .then(self.walkDeps.bind(self))
+  },
+
+  walkDeps: function(mod) {
+    var self = this
+    return all(Object.keys(mod.deps)
+      .filter(function(id) { return mod.deps[id] })
+      .map(function(id) { return self.walk(mod.deps[id], mod) }))
+  },
+
+  emit: function(mod) {
+    var self = this
+    self.output.queue(moduleToResult(mod))
+    return mod
+  },
+
+  checkCache: function(mod, parent) {
+    var self = this
+    if (!(self.opts.cache && self.opts.cache[parent.id])) return
+    var id = self.opts.cache[parent.id].deps[mod.id]
+    return self.opts.cache[id]
+  },
+
+  readSource: function(mod) {
+    if (mod.source) return toPromise(mod)
+    var promise = mod.sourcePromise || aggregate(fs.createReadStream(mod.id))
+    return promise.then(function(source) {
+      mod.source = source
+      return mod
+    })
+  },
+
+  applyTransforms: function(mod) {
+    var self = this,
+        txs = [],
+        p = self.readSource(mod),
+        isTopLevel = self.entries.some(function (entry) {
       return path.relative(path.dirname(entry.id), mod.id)
         .split('/').indexOf('node_modules') < 0
     })
-  }
 
-  // Apply global and per-package transforms on a module
-  // It automatically inserts extractDependencies transform
-  function applyTransforms(mod) {
-    var txs = [], p = readModuleSource(mod)
+    if (isTopLevel)
+      txs = txs.concat(self.opts.transform)
 
-    if (isTopLevel(mod))
-      txs = txs.concat(opts.transform)
-
-    if (mod.package && opts.transformKey)
-      txs = txs.concat(getTransform(mod.package, opts.transformKey))
+    if (mod.package && self.opts.transformKey)
+      txs = txs.concat(getTransform(mod.package, self.opts.transformKey))
 
     txs = txs.filter(Boolean).map(loadTransform.bind(null, mod))
     txs.push(extractDependencies)
@@ -292,10 +235,15 @@ module.exports = function(mains, opts) {
           if (t.length === 1)
             return runStreamTransform(t, p)
           else
-            return runTransform(t, p, opts)
+            return runTransform(t, p, self)
         })
       })
       return p
     })
   }
 }
+
+module.exports = function(mains, opts) {
+  return new Graph(mains, opts).toStream()
+}
+module.exports.Graph = Graph

@@ -13,7 +13,7 @@ var path            = require('path'),
     combine         = require('stream-combiner'),
     browserBuiltins = require('browser-builtins'),
     insertGlobals   = require('insert-module-globals'),
-    collectGraph    = require('./graph')
+    Graph           = require('./graph').Graph
 
 module.exports = function(spec, opts) {
   var entries = values(spec).map(function(p) { return path.resolve(p) }),
@@ -26,7 +26,7 @@ module.exports = function(spec, opts) {
 
   opts.modules = extend({}, browserBuiltins, opts.modules)
 
-  collectGraph(entries, opts).asPromise()
+  new Graph(entries, opts).toPromise()
     .then(asIndex)
     .then(function(graph) {
       var common = commonSubgraph(graph, entries)

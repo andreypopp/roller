@@ -13,7 +13,7 @@ function unquote(str) {
   return str
 }
 
-module.exports = function(mod, opts) {
+module.exports = function(mod, g) {
   if (!/.*\.css/.exec(mod.filename)) return
 
   var css = parse(mod.source.toString()),
@@ -21,6 +21,6 @@ module.exports = function(mod, opts) {
         .filter(isImportRule)
         .map(function(r) { return unquote(r.import) })
 
-  return opts.resolveDeps(unique(deps), mod)
+  return g.resolveDeps(unique(deps), mod)
     .then(function(deps) { return {deps: deps} })
 }
