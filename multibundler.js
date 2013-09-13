@@ -33,11 +33,11 @@ module.exports = function(spec, opts) {
 
       var common = commonSubgraph(graph, entries)
 
-      packBundle(common, {exposeAll: true})
+      packGraph(common, {exposeAll: true})
         .pipe(output.common.js)
 
       for (var name in spec)
-        packBundle(except(subgraphFor(graph, spec[name]), common))
+        packGraph(except(subgraphFor(graph, spec[name]), common))
           .pipe(output[name].js)
 
     })
@@ -88,7 +88,7 @@ function except(a, b) {
   return result
 }
 
-function packBundle(graph, opts) {
+function packGraph(graph, opts) {
   var output = through(),
       mod
 

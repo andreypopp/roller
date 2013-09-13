@@ -6,7 +6,7 @@ install link:
 	@npm $@
 
 lint:
-	@$(BIN)/jshint index.js transforms/*.js
+	@$(BIN)/jshint *.js transforms/*.js
 
 test:
 	@$(BIN)/tap module-deps-test/*.js
