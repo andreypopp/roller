@@ -29,9 +29,9 @@
     "css-parse": "~1.5.3",
     "browser-pack": "~0.10.1",
     "deps-sort": "~0.1.1",
-    "duplexer": "~0.1.1",
     "insert-module-globals": "~1.2.1",
-    "browser-builtins": "~2.0.0"
+    "browser-builtins": "~2.0.0",
+    "stream-combiner": "0.0.2"
   },
   "devDependencies": {
     "tap": "~0.4.4",

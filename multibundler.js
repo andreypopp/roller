@@ -10,14 +10,14 @@ var path            = require('path'),
     unique          = _.unique,
     depsSort        = require('deps-sort'),
     browserPack     = require('browser-pack'),
-    duplex          = require('duplexer'),
+    combine         = require('stream-combiner'),
     browserBuiltins = require('browser-builtins'),
     insertGlobals   = require('insert-module-globals'),
     collectGraph    = require('./graph')
 
 module.exports = function(spec, opts) {
   var entries = values(spec).map(function(p) { return path.resolve(p) }),
-      output = {common: {js: pipeline(insertGlobals(entries), packJS())}}
+      output = {common: {js: combine(insertGlobals(entries), packJS())}}
 
   for (var name in spec) {
     spec[name] = path.resolve(spec[name])
@@ -155,18 +155,8 @@ function mangleID() {
   })
 }
 
-function pipeline() {
-  if (arguments.length === 1) return arguments[0]
-  var current = arguments[0]
-
-  for (var i = 1; i < arguments.length; i++)
-    current = current.pipe(arguments[i])
-
-  return duplex(arguments[0], arguments[arguments.length - 1])
-}
-
 function packJS(opts) {
-  return pipeline(mangleID(), depsSort(), browserPack({raw: true}))
+  return combine(mangleID(), depsSort(), browserPack({raw: true}))
 }
 
 function hash(what) {
