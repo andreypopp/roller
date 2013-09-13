@@ -17,29 +17,27 @@ var path            = require('path'),
 
 module.exports = function(spec, opts) {
   var entries = values(spec).map(function(p) { return path.resolve(p) }),
-      output = {common: {js: combine(insertGlobals(entries), packJS())}}
+      output = {common: {js: packJS()}}
 
   for (var name in spec) {
     spec[name] = path.resolve(spec[name])
     output[name] = {js: packJS()}
   }
 
-  opts.modules = opts.modules || {}
-  extend(opts.modules, browserBuiltins)
+  opts.modules = extend({}, browserBuiltins, opts.modules)
 
   collectGraph(entries, opts).asPromise()
+    .then(asIndex)
     .then(function(graph) {
-      graph = asIndex(graph)
-
       var common = commonSubgraph(graph, entries)
 
       packGraph(common, {exposeAll: true})
+        .pipe(insertGlobals(entries))
         .pipe(output.common.js)
 
       for (var name in spec)
         packGraph(except(subgraphFor(graph, spec[name]), common))
           .pipe(output[name].js)
-
     })
     .end()
 
@@ -49,35 +47,27 @@ module.exports = function(spec, opts) {
 function commonSubgraph(graph, entries) {
   var result = {}
 
-  // XXX: this can be done more efficiently if we just break traversing graph on
-  // modules which are already referenced twice, then we need to mark its deps
-  // as common modules automatically
   entries.forEach(function(entry) {
-    traverse(graph, entry, function(mod, ref, parent) {
-      if (!result[mod.id]) {
-        result[mod.id] = extend({entries: [], from: {}}, mod)
-      }
-      if (!mod.entry) {
-        result[mod.id].entries.push(entry)
-        result[mod.id].from[parent.id] = ref
-      }
+    traverse(graph, entry, function(mod) {
+      if (mod.entry) return
+      if (!result[mod.id])
+        result[mod.id] = extend({entries: []}, mod)
+      result[mod.id].entries.push(entry)
     })
   })
 
-  Object.keys(result).forEach(function(id) {
+  for (var id in result) {
     var mod = result[id]
     mod.entries = unique(mod.entries)
-    if (result[id].entries.length < 2) delete result[id]
-  })
+    if (mod.entries.length < 2) delete result[id]
+  }
 
   return result
 }
 
 function subgraphFor(graph, entry) {
   var result = {}
-  traverse(graph, entry, function(mod, ref, parent) {
-    result[mod.id] = mod
-  })
+  traverse(graph, entry, function(mod) {result[mod.id] = mod})
   return result
 }
 
@@ -89,26 +79,17 @@ function except(a, b) {
 }
 
 function packGraph(graph, opts) {
-  var output = through(),
-      mod
+  var output = through()
 
   output.pause()
   process.nextTick(output.resume.bind(output))
 
-  opts = opts || {}
+  for (var id in graph)
+    output.queue(graph[id])
 
-  for (var id in graph) {
-    mod = graph[id]
+  if (opts && opts.exposeAll)
     output.queue({
-      id: id,
-      deps: mod.deps,
-      source: mod.source,
-      entry: mod.entry
-    })
-  }
-  if (opts.exposeAll)
-    output.queue({
-      id: random(8),
+      id: crypto.rng(8).toString('hex'),
       deps: {},
       entry: true,
       source: 'window.require = require'
@@ -125,22 +106,19 @@ function asIndex(graph) {
 
 function traverse(graph, fromId, func) {
   var toTraverse = [[graph[fromId]]],
-      args,
-      mod
+      seen = {}
 
-  // XXX: no bulletproofness against cycles
   while (toTraverse.length > 0) {
-    args = toTraverse.shift()
-    mod = args[0]
-    if (!mod) continue
+    var args = toTraverse.shift()
+    var mod = args[0]
+
+    if (!mod || seen[mod.id]) continue
+    seen[mod.id] = true
 
     func.apply(null, args)
-
-    if (mod && mod.deps)
-      for (var depId in mod.deps)
-        if (mod.deps[depId]) {
-          toTraverse.push([graph[mod.deps[depId]], depId, mod])
-        }
+    for (var depId in mod.deps)
+      if (mod.deps[depId])
+        toTraverse.push([graph[mod.deps[depId]], depId, mod])
   }
 }
 
@@ -155,14 +133,10 @@ function mangleID() {
   })
 }
 
-function packJS(opts) {
+function packJS() {
   return combine(mangleID(), depsSort(), browserPack({raw: true}))
 }
 
 function hash(what) {
   return crypto.createHash('md5').update(what).digest('base64').slice(0, 6)
-}
-
-function random(n) {
-  return crypto.rng(n).toString('hex')
 }
