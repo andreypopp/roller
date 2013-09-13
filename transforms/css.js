@@ -21,6 +21,6 @@ module.exports = function(mod, opts) {
         .filter(isImportRule)
         .map(function(r) { return unquote(r.import) })
 
-  return mod.resolveMany(unique(deps))
+  return opts.resolveDeps(unique(deps), mod)
     .then(function(deps) { return {deps: deps} })
 }

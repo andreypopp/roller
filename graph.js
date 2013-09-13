@@ -14,6 +14,7 @@ var fs                          = require('fs'),
 
     all                         = q.all,
     asPromise                   = q.resolve,
+    clone                       = _.clone,
     isString                    = _.isString,
     isObject                    = _.isObject,
     extend                      = _.extend,
@@ -24,19 +25,17 @@ var fs                          = require('fs'),
 
 function mergeInto(target, source) {
   if (!source) return target
+  var result = extend({}, target)
   for (var k in source) {
-    var t = target[k], s = source[k]
-    if (!(k in target))
-      target[k] = source[k]
+    var t = result[k], s = source[k]
+    if (isArray(t) && isArray(s))
+      result[k] = t.concat(s)
+    else if (isObject(t) && isObject(s))
+      result[k] = mergeInto(t, s)
     else
-      if (isArray(t) && isArray(s))
-        target[k] = t.concat(s)
-      else if (isObject(t) && isObject(s))
-        target[k] = mergeInto(t, s)
-      else
-        target[k] = s
+      result[k] = s
   }
-  return target
+  return result
 }
 
 /**
@@ -53,7 +52,7 @@ function resolveWith(resolve, id, parent) {
     if (err)
       p.reject(err)
     else
-      p.resolve({id: id, filename: filename, package: pkg})
+      p.resolve({id: filename, package: pkg})
   })
   return p
 }
@@ -68,7 +67,7 @@ function resolveWith(resolve, id, parent) {
  * @return {Promise<Object>} a transformed module
  */
 function runStreamTransform(transform, mod) {
-  return aggregate(asStream(mod.source).pipe(transform(mod.filename)))
+  return aggregate(asStream(mod.source).pipe(transform(mod.id)))
     .then(function(source) {
       mod.source = source
       return mod
@@ -111,7 +110,7 @@ function getTransform(pkg, key) {
 function loadTransform(mod, transform) {
   if (!isString(transform)) return asPromise(transform)
 
-  return transformResolve(transform, {basedir: path.dirname(mod.filename)})
+  return transformResolve(transform, {basedir: path.dirname(mod.id)})
     .fail(function() {
       return transformResolve(transform, {basedir: process.cwd()})
     })
@@ -119,9 +118,9 @@ function loadTransform(mod, transform) {
       if (!res)
         throw new Error([
           'cannot find transform module ', transform,
-          ' while transforming ', mod.filename
+          ' while transforming ', mod.id
         ].join(''))
-      return require(res.filename)
+      return require(res.id)
     })
     .fail(function(err) {
       err.message += ' which is required as a transform'
@@ -136,20 +135,19 @@ function loadTransform(mod, transform) {
  * @return {Object} an object suitable for browser-pack consumption
  */
 function moduleToResult(mod) {
-  if (!mod.filename) return mod
-  var result = {id: mod.filename, source: mod.source, deps: {}}
-  if (Buffer.isBuffer(result.source))
-    result.source = result.source.toString()
-  if (mod.entry)
-    result.entry = true
-  for (var k in mod.deps)
-    result.deps[k] = mod.deps[k].filename
-  return result
+  mod = clone(mod)
+  delete mod.package
+  delete mod.sourcePromise
+  if (!mod.deps)
+    mod.deps = {}
+  if (Buffer.isBuffer(mod.source))
+    mod.source = mod.source.toString()
+  return mod
 }
 
 function readModuleSource(mod) {
   if (mod.source) return asPromise(mod)
-  var promise = mod.sourcePromise || aggregate(fs.createReadStream(mod.filename))
+  var promise = mod.sourcePromise || aggregate(fs.createReadStream(mod.id))
   return promise.then(function(source) {
     mod.source = source
     return mod
@@ -171,31 +169,30 @@ module.exports = function(mains, opts) {
 
   if (opts.extensions) opts.extensions.unshift('.js')
 
-  var moduleProto = {
+  extend(opts, {
     resolve: function(id, parent) {
       if (opts.filter && !opts.filter(id))
-        return asPromise({id: id, filename: false})
+        return asPromise({id: false})
       else
-        return resolver(id, parent || this)
+        return resolver(id, parent)
     },
-    resolveMany: function(ids, parent) {
-      return all(ids.map(function(id) {return this.resolve(id, parent)}, this))
-        .then(function(resolved) {
-          var result = {}
-          resolved.forEach(function(r) { result[r.id] = r })
-          return result
-        })
+    resolveDeps: function(ids, parent) {
+      var result = {},
+          resolutions = all(ids.map(function(id) {
+            return opts.resolve(id, parent).then(function(r) {result[id] = r.id})
+          }))
+      return resolutions.then(function() { return result })
     }
-  }
+  })
 
   var output = through(),
       basedir = opts.basedir || process.cwd(),
-      resolve = resolveWith.bind(null, opts.resolve || browserResolve),
-      resolveCache = {},
+      resolve = resolveWith.bind(null, browserResolve),
+      resolved = {},
       seen = {},
       entries = [].concat(mains).filter(Boolean).map(makeMainModule)
 
-  all(entries.map(function(mod) {return walk(mod, {filename: '/', id: '/'})}))
+  all(entries.map(function(mod) {return walk(mod, {id: '/'})}))
     .fail(output.emit.bind(output, 'error'))
     .fin(output.queue.bind(output, null))
 
@@ -209,9 +206,9 @@ module.exports = function(mains, opts) {
   }
 
   function walk(mod, parent) {
-    if (isString(mod)) mod = resolveCache[mod]
-    if (seen[mod.filename]) return
-    seen[mod.filename] = true
+    if (isString(mod)) mod = resolved[mod]
+    if (seen[mod.id]) return
+    seen[mod.id] = true
 
     var cached = checkExternalCache(mod, parent)
     if (cached) {
@@ -228,59 +225,48 @@ module.exports = function(mains, opts) {
       .map(function(id) { return walk(mod.deps[id], mod) }))
   }
 
-  function makeModule(mod) {
-    var result = Object.create(moduleProto)
-    extend(result, mod)
-    result.deps = mod.deps || {}
-    return result
-  }
-
   function makeMainModule(m) {
-    var filename,
-        mod = makeModule({entry: true})
+    var mod = {entry: true}
 
     if (typeof m.pipe === 'function') {
-      filename = path.join(basedir, rng(8).toString('hex') + '.js')
-      mod.id = filename
-      mod.filename = filename
+      mod.id = path.join(basedir, rng(8).toString('hex') + '.js')
       mod.sourcePromise = aggregate(m)
     } else {
-      filename = path.resolve(m)
-      mod.id = filename
-      mod.filename = filename
+      mod.id = path.resolve(m)
     }
     return mod
   }
 
   // Wrapper around browser-resolve which passes configurations
   function resolver(id, parent) {
-    parent.packageFilter = opts.packageFilter
-    parent.extensions = opts.extensions
-    parent.modules = opts.modules
-    parent.paths = []
-    return resolve(id, parent).then(makeModule)
-      .then(function(mod) { return resolveCache[mod.id] = mod })
+    var relativeTo = {
+      packageFilter: opts.packageFilter,
+      extensions: opts.extensions,
+      modules: opts.modules,
+      paths: [],
+      filename: parent.id,
+      package: parent.package
+    }
+    return resolve(id, relativeTo)
+      .then(function(r) { return resolved[r.id] = r })
       .fail(function(err) {
-        err.message += [', module required from', parent.filename].join(' ')
+        err.message += [', module required from', parent.id].join(' ')
         throw err
+
       })
   }
 
   // Allows to store module and package definitions in a opts.cache and
   // opts.packageCache respectively, this is how module-deps does it
   function checkExternalCache(mod, parent) {
-    if (!(opts.cache && opts.cache[parent.filename])) return
-    var curFilename = opts.cache[parent.filename].deps[mod.id]
-    var result = opts.cache[curFilename]
-    if (!result) return
-    return {id: mod.id, filename: curFilename,
-      deps: result.deps, source: result.source, entry: result.entry,
-      package: opts.packageCache && opts.packageCache[result.id]}
+    if (!(opts.cache && opts.cache[parent.id])) return
+    var id = opts.cache[parent.id].deps[mod.id]
+    return opts.cache[id]
   }
 
   function isTopLevel(mod) {
     return entries.some(function (entry) {
-      return path.relative(path.dirname(entry.filename), mod.filename)
+      return path.relative(path.dirname(entry.id), mod.id)
         .split('/').indexOf('node_modules') < 0
     })
   }
