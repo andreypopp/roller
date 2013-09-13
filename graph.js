@@ -12,7 +12,7 @@ var fs                          = require('fs'),
     asStream                    = require('as-stream'),
 
     all                         = q.all,
-    toPromise                   = q.resolve,
+    asPromise                   = q.resolve,
     clone                       = _.clone,
     isString                    = _.isString,
     isObject                    = _.isObject,
@@ -53,7 +53,7 @@ Graph.prototype = {
   resolve: function(id, parent) {
     var self = this
     if (self.opts.filter && !self.opts.filter(id))
-      return toPromise({id: false})
+      return asPromise({id: false})
     else {
       var relativeTo = {
         packageFilter: self.opts.packageFilter,
@@ -141,7 +141,7 @@ Graph.prototype = {
   },
 
   readSource: function(mod) {
-    if (mod.source) return toPromise(mod)
+    if (mod.source) return asPromise(mod)
     var promise = mod.sourcePromise || aggregate(fs.createReadStream(mod.id))
     return promise.then(function(source) {
       mod.source = source
@@ -217,7 +217,7 @@ function runStreamingTransform(transform, mod) {
 }
 
 function runTransform(transform, mod, graph) {
-  return toPromise(transform(mod, graph)).then(mergeInto.bind(null, mod))
+  return asPromise(transform(mod, graph)).then(mergeInto.bind(null, mod))
 }
 
 function getTransform(pkg, key) {
@@ -228,7 +228,7 @@ function getTransform(pkg, key) {
 var transformResolve = resolveWith.bind(null, nodeResolve)
 
 function loadTransform(mod, transform) {
-  if (!isString(transform)) return toPromise(transform)
+  if (!isString(transform)) return asPromise(transform)
 
   return transformResolve(transform, {basedir: path.dirname(mod.id)})
     .fail(function() {
