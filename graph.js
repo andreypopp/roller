@@ -10,7 +10,6 @@ var fs                          = require('fs'),
     browserResolve              = require('browser-resolve'),
     aggregate                   = require('stream-aggregate-promise'),
     asStream                    = require('as-stream'),
-    transformResolve            = resolveWith.bind(null, nodeResolve),
 
     all                         = q.all,
     toPromise                   = q.resolve,
@@ -23,80 +22,10 @@ var fs                          = require('fs'),
     extractDependencies         = require('./transforms/deps'),
     jsonToCommonJS              = require('./transforms/json')
 
-function mergeInto(target, source) {
-  if (!source) return target
-  var result = extend({}, target)
-  for (var k in source) {
-    var t = result[k], s = source[k]
-    if (isArray(t) && isArray(s))
-      result[k] = t.concat(s)
-    else if (isObject(t) && isObject(s))
-      result[k] = mergeInto(t, s)
-    else
-      result[k] = s
-  }
-  return result
+module.exports = function(mains, opts) {
+  return new Graph(mains, opts).toStream()
 }
-
-function resolveWith(resolve, id, parent) {
-  var p = q.defer()
-  resolve(id, parent, function(err, filename, pkg) {
-    if (err)
-      p.reject(err)
-    else
-      p.resolve({id: filename, package: pkg})
-  })
-  return p
-}
-
-function runStreamTransform(transform, mod) {
-  return aggregate(asStream(mod.source).pipe(transform(mod.id)))
-    .then(function(source) {
-      mod.source = source
-      return mod
-    })
-}
-
-function runTransform(transform, mod, graph) {
-  return toPromise(transform(mod, graph)).then(mergeInto.bind(null, mod))
-}
-
-function getTransform(pkg, key) {
-  key.forEach(function (k) { if (pkg && typeof pkg === 'object') pkg = pkg[k] })
-  return [].concat(pkg).filter(Boolean)
-}
-
-function loadTransform(mod, transform) {
-  if (!isString(transform)) return toPromise(transform)
-
-  return transformResolve(transform, {basedir: path.dirname(mod.id)})
-    .fail(function() {
-      return transformResolve(transform, {basedir: process.cwd()})
-    })
-    .then(function(res) {
-      if (!res)
-        throw new Error([
-          'cannot find transform module ', transform,
-          ' while transforming ', mod.id
-        ].join(''))
-      return require(res.id)
-    })
-    .fail(function(err) {
-      err.message += ' which is required as a transform'
-      throw err
-    })
-}
-
-function moduleToResult(mod) {
-  mod = clone(mod)
-  delete mod.package
-  delete mod.sourcePromise
-  if (!mod.deps)
-    mod.deps = {}
-  if (Buffer.isBuffer(mod.source))
-    mod.source = mod.source.toString()
-  return mod
-}
+module.exports.Graph = Graph
 
 function Graph(mains, opts) {
   var self = this
@@ -189,8 +118,18 @@ Graph.prototype = {
   },
 
   emit: function(mod) {
-    var self = this
-    self.output.queue(moduleToResult(mod))
+    var self = this,
+        result = clone(mod)
+
+    delete result.package
+    delete result.sourcePromise
+
+    if (!result.deps)
+      result.deps = {}
+    if (Buffer.isBuffer(result.source))
+      result.source = result.source.toString()
+
+    self.output.queue(result)
     return mod
   },
 
@@ -233,7 +172,7 @@ Graph.prototype = {
       txs.forEach(function(t) {
         p = p.then(function(p) {
           if (t.length === 1)
-            return runStreamTransform(t, p)
+            return runStreamingTransform(t, p)
           else
             return runTransform(t, p, self)
         })
@@ -243,7 +182,68 @@ Graph.prototype = {
   }
 }
 
-module.exports = function(mains, opts) {
-  return new Graph(mains, opts).toStream()
+function mergeInto(target, source) {
+  if (!source) return target
+  var result = extend({}, target)
+  for (var k in source) {
+    var t = result[k], s = source[k]
+    if (isArray(t) && isArray(s))
+      result[k] = t.concat(s)
+    else if (isObject(t) && isObject(s))
+      result[k] = mergeInto(t, s)
+    else
+      result[k] = s
+  }
+  return result
 }
-module.exports.Graph = Graph
+
+function resolveWith(resolve, id, parent) {
+  var p = q.defer()
+  resolve(id, parent, function(err, filename, pkg) {
+    if (err)
+      p.reject(err)
+    else
+      p.resolve({id: filename, package: pkg})
+  })
+  return p
+}
+
+function runStreamingTransform(transform, mod) {
+  return aggregate(asStream(mod.source).pipe(transform(mod.id)))
+    .then(function(source) {
+      mod.source = source
+      return mod
+    })
+}
+
+function runTransform(transform, mod, graph) {
+  return toPromise(transform(mod, graph)).then(mergeInto.bind(null, mod))
+}
+
+function getTransform(pkg, key) {
+  key.forEach(function (k) { if (pkg && typeof pkg === 'object') pkg = pkg[k] })
+  return [].concat(pkg).filter(Boolean)
+}
+
+var transformResolve = resolveWith.bind(null, nodeResolve)
+
+function loadTransform(mod, transform) {
+  if (!isString(transform)) return toPromise(transform)
+
+  return transformResolve(transform, {basedir: path.dirname(mod.id)})
+    .fail(function() {
+      return transformResolve(transform, {basedir: process.cwd()})
+    })
+    .then(function(res) {
+      if (!res)
+        throw new Error([
+          'cannot find transform module ', transform,
+          ' while transforming ', mod.id
+        ].join(''))
+      return require(res.id)
+    })
+    .fail(function(err) {
+      err.message += ' which is required as a transform'
+      throw err
+    })
+}
