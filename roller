@@ -2,7 +2,7 @@
 var fs            = require('fs'),
     path          = require('path'),
     Graph         = require('./graph').Graph,
-    multibundler  = require('./multibundler'),
+    multibundler  = require('./multibundler/static'),
     unique        = require('lodash.uniq'),
     flatten       = require('lodash.flatten')
 
