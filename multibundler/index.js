@@ -51,7 +51,7 @@ function traverse(graph, fromId, func) {
     func.apply(null, args)
     for (var depId in mod.deps)
       if (mod.deps[depId])
-        toTraverse.push([graph[mod.deps[depId]], depId, mod])
+        toTraverse.unshift([graph[mod.deps[depId]], depId, mod])
   }
 }
 
