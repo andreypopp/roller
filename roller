@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-var fs            = require('fs'),
-    path          = require('path'),
-    unique        = require('lodash-node/modern/arrays/uniq'),
-    flatten       = require('lodash-node/modern/arrays/flatten'),
-    Graph         = require('./graph').Graph,
-    multibundler  = require('./multibundler/static')
+var fs              = require('fs'),
+    path            = require('path'),
+    unique          = require('lodash-node/modern/arrays/uniq'),
+    flatten         = require('lodash-node/modern/arrays/flatten'),
+    Graph           = require('./graph').Graph,
+    multibundler    = require('./multibundler/static'),
+    dynamicbundler  = require('./multibundler/dynamic')
 
 var argv  = require('optimist').argv,
     command = argv._[0],
@@ -17,6 +18,9 @@ switch (command) {
     break
   case 'multibundle':
     multiBundle(args, argv)
+    break
+  case 'dynamicbundle':
+    dynamicBundle(args, argv)
     break
   default:
     error('unknown command')
@@ -33,6 +37,20 @@ function multiBundle(args, opts) {
   })
 
   layoutMultiBundle(streams, outputDir)
+}
+
+function dynamicBundle(args, opts) {
+  var outputDir = path.resolve(opts.output || opts.o || './')
+
+  var streams = dynamicbundler(args[0], {
+    transform: asArray(opts.transform, opts.t),
+    extensions: ['.js'].concat(asArray(opts.extension))
+  })
+
+  streams.then(function(streams) {
+    layoutMultiBundle(streams, outputDir)
+  }).end()
+
 }
 
 function showGraph(args, opts) {
