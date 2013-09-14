@@ -3,20 +3,19 @@
 var fs                          = require('fs'),
     path                        = require('path'),
     rng                         = require('crypto').rng,
-    _                           = require('underscore'),
     q                           = require('kew'),
     through                     = require('through'),
     nodeResolve                 = require('resolve'),
     browserResolve              = require('browser-resolve'),
     aggregate                   = require('stream-aggregate-promise'),
     asStream                    = require('as-stream'),
+    clone                       = require('clone'),
 
     all                         = q.all,
     asPromise                   = q.resolve,
-    clone                       = _.clone,
-    isString                    = _.isString,
-    isObject                    = _.isObject,
-    extend                      = _.extend,
+    isString                    = require('lodash.isstring'),
+    isObject                    = require('lodash.isobject'),
+    assign                      = require('lodash.assign'),
     isArray                     = Array.isArray,
 
     depsTransform               = require('./transforms/deps'),
@@ -184,7 +183,7 @@ Graph.prototype = {
 
 function mergeInto(target, source) {
   if (!source) return target
-  var result = extend({}, target)
+  var result = assign({}, target)
   for (var k in source) {
     var t = result[k], s = source[k]
     if (isArray(t) && isArray(s))

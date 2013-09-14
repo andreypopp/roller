@@ -3,7 +3,8 @@ var fs            = require('fs'),
     path          = require('path'),
     Graph         = require('./graph').Graph,
     multibundler  = require('./multibundler'),
-    _             = require('underscore')
+    unique        = require('lodash.unique'),
+    flatten       = require('lodash.flatten')
 
 var argv  = require('optimist').argv,
     command = argv._[0],
@@ -71,7 +72,7 @@ function bundleName(p) {
 }
 
 function asArray() {
-  return _.unique(_.flatten(arguments))
+  return unique(flatten(arguments))
 }
 
 function error(msg, code) {

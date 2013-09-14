@@ -3,11 +3,10 @@
 var path            = require('path'),
     crypto          = require('crypto'),
     through         = require('through'),
-    _               = require('underscore'),
-    clone           = _.clone,
-    extend          = _.extend,
-    values          = _.values,
-    unique          = _.unique,
+    clone           = require('clone'),
+    assign          = require('lodash.assign'),
+    values          = require('lodash.values'),
+    unique          = require('lodash.uniq'),
     depsSort        = require('deps-sort'),
     browserPack     = require('browser-pack'),
     combine         = require('stream-combiner'),
@@ -24,7 +23,7 @@ module.exports = function(spec, opts) {
     output[name] = {js: packJS()}
   }
 
-  opts.modules = extend({}, browserBuiltins, opts.modules)
+  opts.modules = assign({}, browserBuiltins, opts.modules)
 
   new Graph(entries, opts).toPromise()
     .then(asIndex)
@@ -51,7 +50,7 @@ function commonSubgraph(graph, entries) {
     traverse(graph, entry, function(mod) {
       if (mod.entry) return
       if (!result[mod.id])
-        result[mod.id] = extend({entries: []}, mod)
+        result[mod.id] = assign({entries: []}, mod)
       result[mod.id].entries.push(entry)
     })
   })
