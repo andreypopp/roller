@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 var fs            = require('fs'),
     path          = require('path'),
+    unique        = require('lodash-node/modern/arrays/uniq'),
+    flatten       = require('lodash-node/modern/arrays/flatten'),
     Graph         = require('./graph').Graph,
-    multibundler  = require('./multibundler/static'),
-    unique        = require('lodash.uniq'),
-    flatten       = require('lodash.flatten')
+    multibundler  = require('./multibundler/static')
 
 var argv  = require('optimist').argv,
     command = argv._[0],

@@ -1,7 +1,7 @@
 "use strict";
 
-var assign          = require('lodash.assign'),
-    unique          = require('lodash.uniq')
+var assign  = require('lodash-node/modern/objects/assign'),
+    unique  = require('lodash-node/modern/arrays/uniq')
 
 function commonSubgraph(graph, entries) {
   var result = {}

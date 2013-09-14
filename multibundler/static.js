@@ -1,7 +1,7 @@
 var path            = require('path'),
     crypto          = require('crypto'),
     through         = require('through'),
-    values          = require('lodash.values'),
+    values          = require('lodash-node/modern/objects/values'),
     Graph           = require('../graph').Graph,
     Bundler         = require('../bundler').Bundler,
     multibundler    = require('./index')

@@ -13,9 +13,9 @@ var fs                          = require('fs'),
 
     all                         = q.all,
     asPromise                   = q.resolve,
-    isString                    = require('lodash.isstring'),
-    isObject                    = require('lodash.isobject'),
-    assign                      = require('lodash.assign'),
+    isString                    = require('lodash-node/modern/objects/isString'),
+    isObject                    = require('lodash-node/modern/objects/isObject'),
+    assign                      = require('lodash-node/modern/objects/assign'),
     isArray                     = Array.isArray,
 
     depsTransform               = require('./transforms/deps'),

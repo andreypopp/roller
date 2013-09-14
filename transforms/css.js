@@ -1,7 +1,7 @@
 "use strict";
 
 var parse   = require('css-parse'),
-    unique  = require('underscore').unique
+    unique  = require('lodash-node/modern/arrays/uniq')
 
 function isImportRule(r) {
   return (r.type === 'import') && (!/^url\(/.exec(r.import))
