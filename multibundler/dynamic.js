@@ -78,13 +78,13 @@ module.exports = function(entry, opts) {
         source: 'window.require = require'
       })
       .inject({
-        id: 'roller/runtime/async',
+        id: 'roller/runtime/loader',
         deps: {},
         entry: true,
         source: runtime
       }, {expose: true})
       .inject({
-        id: 'roller/runtime/bundles',
+        id: 'roller/runtime/modules',
         deps: {},
         source: 'module.exports = ' + JSON.stringify(mapping) + ';'
       }, {expose: true})

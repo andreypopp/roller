@@ -14,12 +14,14 @@
 
     function newRequire(name, jumped){
 
-        function makeRequire(func) {
-          func.async = function(id, cb) {
-            var id = modules[name][1][id]
-            runtime.load(id ? id : x, cb)
-          }
-          return func
+        var localRequire = function(x) {
+          var id = modules[name][1][x];
+          return newRequire(id ? id : x);
+        }
+
+        localRequire.async = function(x, cb) {
+          var id = modules[name][1][x]
+          runtime.load(id ? id : x, cb)
         }
 
         if(!cache[name]) {
@@ -38,15 +40,12 @@
                 throw new Error('Cannot find module \'' + name + '\'');
             }
             var m = cache[name] = {exports:{}};
-            modules[name][0].call(m.exports, makeRequire(function(x){
-                var id = modules[name][1][x];
-                return newRequire(id ? id : x);
-            }),m,m.exports,outer,modules,cache,entry);
+            modules[name][0].call(m.exports,localRequire,m,m.exports,outer,modules,cache,entry);
         }
         return cache[name].exports;
     }
 
-    var runtime = newRequire('roller/runtime/async') 
+    var runtime = newRequire('roller/runtime/loader') 
 
     runtime.bundleLoaded(newRequire, entry)
     // Override the current require with this new one
