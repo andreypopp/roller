@@ -11,12 +11,13 @@
     // Save the require from previous bundle to this closure if any
     var previousRequire = typeof require == "function" && require;
 
+
     function newRequire(name, jumped){
 
         function makeRequire(func) {
           func.async = function(id, cb) {
             var id = modules[name][1][id]
-            window.__runtime.require_async(id ? id : x, cb)
+            runtime.load(id ? id : x, cb)
           }
           return func
         }
@@ -44,9 +45,10 @@
         }
         return cache[name].exports;
     }
-    for(var i=0;i<entry.length;i++) newRequire(entry[i]);
 
-    window.__runtime.bundleLoaded(newRequire)
+    var runtime = newRequire('roller/runtime/async') 
+
+    runtime.bundleLoaded(newRequire, entry)
     // Override the current require with this new one
     return newRequire;
 })

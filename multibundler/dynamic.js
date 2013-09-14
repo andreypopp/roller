@@ -67,7 +67,6 @@ module.exports = function(entry, opts) {
       }
     }
 
-    bootstrap[entry].entry = false
     updateMapping('bootstrap', bootstrap)
 
     new Bundler(bootstrap, {insertGlobals: true, prelude: prelude})
@@ -79,16 +78,16 @@ module.exports = function(entry, opts) {
         source: 'window.require = require'
       })
       .inject({
-        id: 'roller/runtime/async_loader',
-        deps: {entry: entry, 'roller/runtime/bundles': 'roller/runtime/bundles'},
+        id: 'roller/runtime/async',
+        deps: {},
         entry: true,
         source: runtime
-      })
+      }, {expose: true})
       .inject({
         id: 'roller/runtime/bundles',
         deps: {},
         source: 'module.exports = ' + JSON.stringify(mapping) + ';'
-      })
+      }, {expose: true})
       .toStream()
       .pipe(output.bootstrap.js)
 

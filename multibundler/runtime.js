@@ -1,13 +1,13 @@
 var modulesMap = require('roller/runtime/bundles'),
-    fetchedBundles = {},
-    loadedModules = {}
+    fetchedBundles = {}
 
-module.exports = window.__runtime = {
+module.exports = {
+
   require: function(id) {
     return require(id)
   },
 
-  load: function(src, callback) {
+  fetch: function(src, callback) {
       var scripts = document.head.getElementsByTagName('script');
       for (var i = 0; i < scripts.length; i++) {
         if (scripts[i].src == src) return 'loaded'
@@ -18,7 +18,7 @@ module.exports = window.__runtime = {
       scr.src = src
   },
 
-  require_async: function(id, callback) {
+  load: function(id, callback) {
     var bundle = modulesMap[id]
 
     if (!bundle)
@@ -27,14 +27,15 @@ module.exports = window.__runtime = {
     if (fetchedBundles[bundle])
       return callback(null, require(id))
 
-    this.load(bundle + '.js', function() {
+    this.fetch(bundle + '.js', function() {
+      fetchedBundles[bundle] = true
       callback(null, this.require(id))
     }.bind(this))
   },
 
-  bundleLoaded: function(newRequire) {
+  bundleLoaded: function(newRequire, entries) {
     this.require = newRequire
+    for(var i=0; i<entries.length; i++)
+      newRequire(entries[i])
   }
 }
-
-require('entry')

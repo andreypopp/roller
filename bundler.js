@@ -15,12 +15,11 @@ module.exports.Bundler = Bundler
 module.exports.hash = hash
 
 function Bundler(graph, opts) {
-  var self = this
-
-  self.graph = graph
-  self.opts = opts || {}
-  self.injections = []
-  self.pipeline = []
+  this.graph = graph
+  this.opts = opts || {}
+  this.injections = []
+  this.pipeline = []
+  this.exposed = []
 }
 
 defineLazyProperty(Bundler.prototype, 'entries', function() {
@@ -29,8 +28,15 @@ defineLazyProperty(Bundler.prototype, 'entries', function() {
 
 Bundler.prototype = {
 
-  inject: function(mod) {
+  expose: function(id) {
+    this.exposed.push(id)
+    return this
+  },
+
+  inject: function(mod, opts) {
     this.injections.push(mod)
+    if (opts && opts.expose)
+      this.expose(mod.id)
     return this
   },
 
@@ -44,54 +50,56 @@ Bundler.prototype = {
   },
 
   getPipeline: function() {
-    var self = this,
-        pipeline = self.pipeline.concat([depsSort(), mangleID()])
+    var pipeline = this.pipeline.concat([depsSort()])
 
-    if (self.opts.insertGlobals)
-      pipeline.push(insertGlobals(self.entries))
+    if (this.opts.insertGlobals)
+      pipeline.push(insertGlobals(this.entries))
+
+    if (!this.opts.exposeAll)
+      pipeline.push(this.hashIDs())
 
     return pipeline
   },
 
-  getGraphsStream: function() {
-    var self = this,
-        output = through()
+  getGraphStream: function() {
+    var output = through()
 
     output.pause()
     process.nextTick(output.resume.bind(output))
 
-    self.injections.forEach(output.queue.bind(output))
+    this.injections.forEach(output.queue.bind(output))
 
-    for (var key in self.graph)
-      output.queue(self.graph[key])
+    for (var key in this.graph)
+      output.queue(this.graph[key])
     output.queue(null)
     return output
   },
 
+  hashIDs: function() {
+    var self = this
+
+    return through(function(mod) {
+      mod = clone(mod)
+      if (self.exposed.indexOf(mod.id) === -1)
+        mod.id = hash(mod.id)
+      for (var id in mod.deps)
+        if (mod.deps[id] && self.exposed.indexOf(mod.deps[id]) === -1)
+          mod.deps[id] = hash(mod.deps[id])
+      this.queue(mod)
+    })
+  },
+
   toStream: function() {
-    var self = this,
-        pipeline = self.getPipeline()
+    var pipeline = this.getPipeline()
 
-    pipeline.push(self.getPacker())
+    pipeline.push(this.getPacker())
 
-    return self.getGraphsStream().pipe(combine.apply(null, pipeline))
+    return this.getGraphStream().pipe(combine.apply(null, pipeline))
   },
 
   toPromise: function() {
     return aggregate(this.toStream())
   }
-}
-
-function mangleID() {
-  return through(function(mod) {
-    mod = clone(mod)
-    mod.id = hash(mod.id)
-    if (mod.deps)
-      for (var id in mod.deps)
-        if (mod.deps[id])
-          mod.deps[id] = hash(mod.deps[id])
-    this.queue(mod)
-  })
 }
 
 function hash(what) {
