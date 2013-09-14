@@ -3,7 +3,7 @@ var fs            = require('fs'),
     path          = require('path'),
     Graph         = require('./graph').Graph,
     multibundler  = require('./multibundler'),
-    unique        = require('lodash.unique'),
+    unique        = require('lodash.uniq'),
     flatten       = require('lodash.flatten')
 
 var argv  = require('optimist').argv,
