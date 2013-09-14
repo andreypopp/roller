@@ -19,6 +19,8 @@ function Bundler(graph, opts) {
 
   self.graph = graph
   self.opts = opts || {}
+  self.injections = []
+  self.pipeline = []
 }
 
 defineLazyProperty(Bundler.prototype, 'entries', function() {
@@ -27,13 +29,23 @@ defineLazyProperty(Bundler.prototype, 'entries', function() {
 
 Bundler.prototype = {
 
+  inject: function(mod) {
+    this.injections.push(mod)
+    return this
+  },
+
+  through: function(func) {
+    this.pipeline.push(through(func))
+    return this
+  },
+
   getPacker: function() {
-    return pack({raw: true})
+    return pack({raw: true, prelude: this.opts.prelude})
   },
 
   getPipeline: function() {
     var self = this,
-        pipeline = [depsSort(), mangleID()]
+        pipeline = self.pipeline.concat([depsSort(), mangleID()])
 
     if (self.opts.insertGlobals)
       pipeline.push(insertGlobals(self.entries))
@@ -47,6 +59,8 @@ Bundler.prototype = {
 
     output.pause()
     process.nextTick(output.resume.bind(output))
+
+    self.injections.forEach(output.queue.bind(output))
 
     for (var key in self.graph)
       output.queue(self.graph[key])
@@ -74,7 +88,8 @@ function mangleID() {
     mod.id = hash(mod.id)
     if (mod.deps)
       for (var id in mod.deps)
-        mod.deps[id] = hash(mod.deps[id])
+        if (mod.deps[id])
+          mod.deps[id] = hash(mod.deps[id])
     this.queue(mod)
   })
 }
