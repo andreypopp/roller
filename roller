@@ -3,7 +3,7 @@ var fs              = require('fs'),
     path            = require('path'),
     unique          = require('lodash-node/modern/arrays/uniq'),
     flatten         = require('lodash-node/modern/arrays/flatten'),
-    Graph           = require('./graph').Graph,
+    Graph           = require('dgraph').Graph,
     multibundler    = require('./multibundler/static'),
     dynamicbundler  = require('./multibundler/dynamic')
 

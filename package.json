@@ -35,7 +35,8 @@
     "lazy-property": "0.0.2",
     "lodash-node": "~2.0.0",
     "esprima": "~1.0.4",
-    "escodegen": "0.0.27"
+    "escodegen": "0.0.27",
+    "dgraph": "~0.1.0"
   },
   "devDependencies": {
     "tap": "~0.4.4",
