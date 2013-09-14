@@ -3,39 +3,38 @@
 var path            = require('path'),
     crypto          = require('crypto'),
     through         = require('through'),
-    clone           = require('clone'),
     assign          = require('lodash.assign'),
     values          = require('lodash.values'),
     unique          = require('lodash.uniq'),
-    depsSort        = require('deps-sort'),
-    browserPack     = require('browser-pack'),
-    combine         = require('stream-combiner'),
-    browserBuiltins = require('browser-builtins'),
-    insertGlobals   = require('insert-module-globals'),
-    Graph           = require('./graph').Graph
+    Graph           = require('./graph').Graph,
+    Bundler         = require('./bundler').Bundler
 
 module.exports = function(spec, opts) {
   var entries = values(spec).map(function(p) { return path.resolve(p) }),
-      output = {common: {js: packJS()}}
+      output = {common: {js: through()}}
 
   for (var name in spec) {
     spec[name] = path.resolve(spec[name])
-    output[name] = {js: packJS()}
+    output[name] = {js: through()}
   }
 
-  opts.modules = assign({}, browserBuiltins, opts.modules)
-
   new Graph(entries, opts).toPromise()
-    .then(asIndex)
     .then(function(graph) {
-      var common = commonSubgraph(graph, entries)
+      var common = commonSubgraph(graph, entries),
+          exposerID = crypto.rng(8).toString('hex')
 
-      packGraph(common, {exposeAll: true})
-        .pipe(insertGlobals(entries))
+      common[exposerID] = {
+        id: exposerID,
+        deps: {},
+        entry: true,
+        source: 'window.require = require'
+      }
+
+      new Bundler(common, {insertGlobals: true}).toStream()
         .pipe(output.common.js)
 
       for (var name in spec)
-        packGraph(except(subgraphFor(graph, spec[name]), common))
+        new Bundler(except(subgraphFor(graph, spec[name]), common)).toStream()
           .pipe(output[name].js)
     })
     .end()
@@ -77,32 +76,6 @@ function except(a, b) {
   return result
 }
 
-function packGraph(graph, opts) {
-  var output = through()
-
-  output.pause()
-  process.nextTick(output.resume.bind(output))
-
-  for (var id in graph)
-    output.queue(graph[id])
-
-  if (opts && opts.exposeAll)
-    output.queue({
-      id: crypto.rng(8).toString('hex'),
-      deps: {},
-      entry: true,
-      source: 'window.require = require'
-    })
-  output.queue(null)
-  return output
-}
-
-function asIndex(graph) {
-  var index = {}
-  graph.forEach(function(mod) { index[mod.id] = mod })
-  return index
-}
-
 function traverse(graph, fromId, func) {
   var toTraverse = [[graph[fromId]]],
       seen = {}
@@ -119,23 +92,4 @@ function traverse(graph, fromId, func) {
       if (mod.deps[depId])
         toTraverse.push([graph[mod.deps[depId]], depId, mod])
   }
-}
-
-function mangleID() {
-  return through(function(mod) {
-    mod = clone(mod)
-    mod.id = hash(mod.id)
-    if (mod.deps)
-      for (var id in mod.deps)
-        mod.deps[id] = hash(mod.deps[id])
-    this.queue(mod)
-  })
-}
-
-function packJS() {
-  return combine(mangleID(), depsSort(), browserPack({raw: true}))
-}
-
-function hash(what) {
-  return crypto.createHash('md5').update(what).digest('base64').slice(0, 6)
 }
