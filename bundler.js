@@ -12,6 +12,7 @@ module.exports = function(graph) {
   return new Bundler(graph, opts).toStream()
 }
 module.exports.Bundler = Bundler
+module.exports.hash = hash
 
 function Bundler(graph, opts) {
   var self = this
