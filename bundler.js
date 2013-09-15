@@ -17,9 +17,10 @@ module.exports.hash = hash
 function Bundler(graph, opts) {
   this.graph = graph
   this.opts = opts || {}
-  this.injections = []
-  this.pipeline = []
-  this.exposed = []
+
+  this._injections = [] // modules we inject into bundle
+  this._pipeline = []   // additional pipeline streams
+  this._exposed = []    // exposed name which should not be mangled
 }
 
 defineLazyProperty(Bundler.prototype, 'entries', function() {
@@ -29,34 +30,35 @@ defineLazyProperty(Bundler.prototype, 'entries', function() {
 Bundler.prototype = {
 
   expose: function(id) {
-    this.exposed.push(id)
+    this._exposed.push(id)
     return this
   },
 
   inject: function(mod, opts) {
-    this.injections.push(mod)
+    this._injections.push(mod)
     if (opts && opts.expose)
       this.expose(mod.id)
     return this
   },
 
   through: function(func) {
-    this.pipeline.push(through(func))
+    this._pipeline.push(through(func))
     return this
   },
 
-  getPacker: function() {
-    return pack({raw: true, prelude: this.opts.prelude})
-  },
-
   getPipeline: function() {
-    var pipeline = this.pipeline.concat([depsSort()])
+    var pipeline = this._pipeline.slice(),
+        seen = false
 
     if (this.opts.insertGlobals)
       pipeline.push(insertGlobals(this.entries))
 
     if (!this.opts.exposeAll)
-      pipeline.push(this.hashIDs())
+      pipeline.push(this._hashIDs())
+
+    pipeline.push(depsSort())
+    pipeline.push(pack({raw: true, prelude: this.opts.prelude}))
+    pipeline.push(this._wrapBundle())
 
     return pipeline
   },
@@ -67,34 +69,59 @@ Bundler.prototype = {
     output.pause()
     process.nextTick(output.resume.bind(output))
 
-    this.injections.forEach(output.queue.bind(output))
+    this._injections.forEach(output.queue.bind(output))
 
-    for (var key in this.graph)
-      output.queue(this.graph[key])
+    for (var key in this.graph) {
+      var mod = this.graph[key]
+      if (this.opts.debug) {
+        mod = clone(mod)
+        mod.sourceFile = mod.id
+        mod.sourceRoot = 'file://localhost'
+      }
+      output.queue(mod)
+    }
+
     output.queue(null)
     return output
   },
 
-  hashIDs: function() {
+  _wrapBundle: function() {
+    var seen = false
+    return through(
+      function(chunk) {
+        if (!seen) {
+          seen = true
+          this.queue('require = ')
+        }
+        this.queue(chunk)
+      },
+      function() {
+        if (!seen) {
+          seen = true
+          this.queue('require = ')
+        }
+        this.queue('\n;')
+        this.queue(null)
+      })
+  },
+
+  _hashIDs: function() {
     var self = this
 
     return through(function(mod) {
       mod = clone(mod)
-      if (self.exposed.indexOf(mod.id) === -1)
+      if (self._exposed.indexOf(mod.id) === -1)
         mod.id = hash(mod.id)
       for (var id in mod.deps)
-        if (mod.deps[id] && self.exposed.indexOf(mod.deps[id]) === -1)
+        if (mod.deps[id] && self._exposed.indexOf(mod.deps[id]) === -1)
           mod.deps[id] = hash(mod.deps[id])
       this.queue(mod)
     })
   },
 
   toStream: function() {
-    var pipeline = this.getPipeline()
-
-    pipeline.push(this.getPacker())
-
-    return this.getGraphStream().pipe(combine.apply(null, pipeline))
+    var pipeline = combine.apply(null, this.getPipeline())
+    return this.getGraphStream().pipe(pipeline)
   },
 
   toPromise: function() {

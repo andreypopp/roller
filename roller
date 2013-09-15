@@ -7,7 +7,7 @@ var fs              = require('fs'),
     multibundler    = require('./multibundler/static'),
     dynamicbundler  = require('./multibundler/dynamic')
 
-var argv  = require('optimist').argv,
+var argv  = require('optimist').boolean('debug').argv,
     command = argv._[0],
     args = argv._.slice(1)
 
@@ -43,6 +43,7 @@ function dynamicBundle(args, opts) {
   var outputDir = path.resolve(opts.output || opts.o || './')
 
   var streams = dynamicbundler(args[0], {
+    debug: opts.debug,
     transform: asArray(opts.transform, opts.t),
     extensions: ['.js'].concat(asArray(opts.extension))
   })

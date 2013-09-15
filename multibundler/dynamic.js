@@ -17,8 +17,8 @@ var commonSubgraph      = multibundler.commonSubgraph,
     subgraphFor         = multibundler.subgraphFor,
     traverse            = multibundler.traverse
 
-var runtime             = fs.readFileSync(path.join(__dirname, 'runtime.js'))
-var prelude             = fs.readFileSync(path.join(__dirname, 'prelude.js'))
+var runtime = fs.readFileSync(path.join(__dirname, 'runtime.js'), 'utf8')
+var prelude = fs.readFileSync(path.join(__dirname, 'prelude.js'), 'utf8')
 
 module.exports = function(entry, opts) {
   entry = path.resolve(entry)
@@ -60,7 +60,7 @@ module.exports = function(entry, opts) {
             sGraph = except(subgraphFor(splitted, s), pGraph)
 
         updateMapping(bundleName, sGraph)
-        new Bundler(sGraph, {prelude: prelude})
+        new Bundler(sGraph, {prelude: prelude, debug: opts.debug})
           .through(mapAsyncDeps)
           .toStream()
           .pipe(stream.js)
@@ -69,14 +69,8 @@ module.exports = function(entry, opts) {
 
     updateMapping('bootstrap', bootstrap)
 
-    new Bundler(bootstrap, {insertGlobals: true, prelude: prelude})
+    new Bundler(bootstrap, {insertGlobals: true, prelude: prelude, debug: opts.debug})
       .through(mapAsyncDeps)
-      .inject({
-        id: 'roller/runtime/exposer',
-        deps: {},
-        entry: true,
-        source: 'window.require = require'
-      })
       .inject({
         id: 'roller/runtime/loader',
         deps: {},

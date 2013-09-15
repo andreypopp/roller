@@ -26,7 +26,7 @@
     "as-stream": "~0.1.0",
     "optimist": "~0.6.0",
     "css-parse": "~1.5.3",
-    "browser-pack": "~0.10.1",
+    "browser-pack": "~0.10.2",
     "deps-sort": "~0.1.1",
     "insert-module-globals": "~1.2.1",
     "browser-builtins": "~2.0.0",
