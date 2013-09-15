@@ -7,8 +7,9 @@ var path                = require('path'),
     assign              = require('lodash-node/modern/objects/assign'),
     clone               = require('clone'),
     Graph               = require('dgraph').Graph,
-    Bundler             = require('../bundler').Bundler,
-    hash                = require('../bundler').hash,
+    Bundler             = require('dgraph-bundler').Bundler,
+    hash                = require('dgraph-bundler').hash,
+    asStream            = require('as-stream'),
     multibundler        = require('./index'),
     asyncDepsTransform  = require('../transforms/async_deps')
 
@@ -60,7 +61,7 @@ module.exports = function(entry, opts) {
             sGraph = except(subgraphFor(splitted, s), pGraph)
 
         updateMapping(bundleName, sGraph)
-        new Bundler(sGraph, {prelude: prelude, debug: opts.debug})
+        new Bundler(asStream.apply(null, values(sGraph)), {prelude: prelude, debug: opts.debug})
           .through(mapAsyncDeps)
           .toStream()
           .pipe(stream.js)
@@ -69,7 +70,7 @@ module.exports = function(entry, opts) {
 
     updateMapping('bootstrap', bootstrap)
 
-    new Bundler(bootstrap, {insertGlobals: true, prelude: prelude, debug: opts.debug})
+    new Bundler(asStream.apply(null, values(bootstrap)), {insertGlobals: true, prelude: prelude, debug: opts.debug})
       .through(mapAsyncDeps)
       .inject({
         id: 'roller/runtime/loader',

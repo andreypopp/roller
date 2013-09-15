@@ -3,7 +3,7 @@ var path            = require('path'),
     through         = require('through'),
     values          = require('lodash-node/modern/objects/values'),
     Graph           = require('dgraph').Graph,
-    Bundler         = require('../bundler').Bundler,
+    Bundler         = require('dgraph-bundler').Bundler,
     multibundler    = require('./index')
 
 var commonSubgraph  = multibundler.commonSubgraph,
